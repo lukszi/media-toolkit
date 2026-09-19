@@ -1,0 +1,5 @@
+# Bytes are bytes. The history is replayed, and a line-ending conversion
+# would make a replayed tree differ from the tree it was built from.
+* -text
+*.png binary
+*.jpg binary

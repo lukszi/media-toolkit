@@ -1,0 +1,25 @@
+# Allowlist, not an ignore list: everything is ignored unless it is named.
+# An ignore list is one forgotten pattern away from committing a database
+# dump; this fails closed instead.
+/*
+!/.github/
+!/docs/
+!/examples/
+!/packages/
+!/tests/
+!/.gitattributes
+!/.gitignore
+!/CONTRIBUTING.md
+!/LICENSE
+!/README.md
+!/SECURITY.md
+!/pyproject.toml
+
+# inside the allowed trees, still refuse generated and private things
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/*.egg-info/
+/tests/_fixtures/
+/work/
+*.local.toml
