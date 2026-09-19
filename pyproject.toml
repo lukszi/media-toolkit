@@ -1,0 +1,28 @@
+[project]
+name = "media-toolkit-workspace"
+version = "0.0.0"
+description = "Development workspace: never published as a distribution."
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages"]
+markers = [
+  "needs_ffmpeg: requires ffmpeg on PATH",
+  "needs_mkvtoolnix: requires MKVToolNix on PATH",
+  "needs_asr: requires a speech model and is slow",
+  "slow: takes more than a few seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

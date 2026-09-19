@@ -1,0 +1,41 @@
+# Every path, id, drive and token in these tools comes from one file like this.
+# Resolution order:
+#   --config PATH -> $MEDIATOOLKIT_CONFIG -> ./mediatoolkit.toml -> per-user
+# Nothing below points anywhere real: these are invented example values.
+
+[server]
+url = "http://127.0.0.1:8096"
+# The token itself is NEVER in this file. Name the variable that holds it:
+token_env = "JFKIT_TOKEN"
+# ...or a command that prints it:
+# token_command = "pass show media/server"
+user_id = "00000000-0000-0000-0000-000000000000"
+data_dir = "/var/lib/jellyfin"
+
+[tools]
+ffmpeg = "ffmpeg"
+ffprobe = "ffprobe"
+mkvmerge = "mkvmerge"
+mkvpropedit = "mkvpropedit"
+
+[paths]
+movies = "/srv/media/movies"
+series = "/srv/media/series"
+staging = "/srv/staging"
+parked = "/srv/parked"
+work = "./work"
+
+[policy]
+keep_languages = ["eng", "deu"]
+droppable_languages = []
+default_audio = "eng"
+
+[langid]
+model = "large-v3"
+device = "auto"
+min_conf = 0.92
+override_conf = 0.97
+
+[jobs]
+device_gate = true
+max_readers_per_device = 1

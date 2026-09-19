@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jfkit"
+description = "Jellyfin administration from the command line"
+dynamic = ["version"]
+readme = "README.md"
+requires-python = ">=3.11"
+# PEP 639 licence expression. PolyForm Noncommercial is not OSI-approved and has no
+# standard SPDX id, so it is named by LicenseRef pointing at the full text in LICENSE.
+license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+dependencies = []
+
+[project.scripts]
+jfkit = "jfkit.cli:main"
+
+[project.optional-dependencies]
+files = ["mkvkit"]
+
+[tool.hatch.version]
+path = "src/jfkit/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jfkit"]
