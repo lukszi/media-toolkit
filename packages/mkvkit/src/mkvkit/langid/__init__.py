@@ -1,7 +1,6 @@
-"""mkvkit -- Matroska surgery and verification"""
+"""mkvkit.langid -- identify the spoken language of an audio track."""
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
 
 from __future__ import annotations
 
-__version__ = "0.0.1"
-__all__ = ["__version__"]
+__all__: list[str] = []

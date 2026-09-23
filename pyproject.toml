@@ -12,17 +12,57 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages"]
+# so a checkout runs its tests before anything is installed
+pythonpath = [
+  "packages/mkvkit/src",
+  "packages/jfkit/src",
+  "packages/dubalign/src",
+]
 markers = [
-  "needs_ffmpeg: requires ffmpeg on PATH",
-  "needs_mkvtoolnix: requires MKVToolNix on PATH",
+  "needs_ffmpeg: requires ffmpeg and ffprobe on PATH",
+  "needs_mkvtoolnix: requires the MKVToolNix command-line tools",
   "needs_asr: requires a speech model and is slow",
   "slow: takes more than a few seconds",
 ]
+filterwarnings = ["error"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["tests/_fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "RUF"]
+ignore = [
+  # the invented cast and the config keys are ASCII; the prose is not, and a
+  # dash in a docstring is not an error
+  "RUF002",
+  "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# These three arrived as they are and have not been rewritten yet. They are
+# exempted by name rather than by relaxing the rules for everything, and each
+# exemption disappears when the module is packaged properly -- which is also
+# when it gets its tests. Nothing new is added to this list.
+"packages/jfkit/src/jfkit/naming.py" = ["E501", "E741", "UP009", "UP031"]
+"packages/mkvkit/src/mkvkit/ebml.py" = ["E401", "E501", "I001", "UP009"]
+"packages/dubalign/src/dubalign/align.py" = ["E702", "RUF046", "RUF059"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
+files = ["packages"]
+mypy_path = [
+  "packages/mkvkit/src",
+  "packages/jfkit/src",
+  "packages/dubalign/src",
+]
+
+# The same three modules the lint exemptions name. Annotating them is part of
+# packaging them properly, which happens at the milestone that also gives them
+# their tests; excluding them by name keeps the setting strict for everything
+# else instead of quietly lowering it for the whole tree.
+[[tool.mypy.overrides]]
+module = ["jfkit.naming", "mkvkit.ebml", "dubalign.align"]
+ignore_errors = true

@@ -11,17 +11,36 @@ requires-python = ">=3.11"
 # PEP 639 licence expression. PolyForm Noncommercial is not OSI-approved and has no
 # standard SPDX id, so it is named by LicenseRef pointing at the full text in LICENSE.
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
+keywords = ["matroska", "mkv", "ffmpeg", "verification", "subtitles"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: System Administrators",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Video",
+]
+# The core is standard library only: TOML, subprocess, sqlite3, XML, urllib.
+# Nothing heavy is added to save twenty lines; it becomes an extra instead.
 dependencies = []
 
 [project.scripts]
 mkvkit = "mkvkit.cli:main"
 
 [project.optional-dependencies]
-asr = ["faster-whisper>=1.2", "ctranslate2>=4.8", "numpy>=1.26"]
-numeric = ["numpy>=1.26"]
+# spoken-language identification: the detector and its runtime. Model weights
+# are never vendored -- the model name and its cache directory are config.
+langid = ["faster-whisper>=1.2", "ctranslate2>=4.8"]
+# the numeric half: measurement without a speech model
+align = ["numpy>=1.26", "scipy>=1.11"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.version]
 path = "src/mkvkit/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mkvkit"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "README.md", "LICENSE"]

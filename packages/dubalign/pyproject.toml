@@ -4,23 +4,39 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dubalign"
-description = "align a foreign dub to a different transfer"
+description = "Align a dubbed audio track to a different transfer"
 dynamic = ["version"]
 readme = "README.md"
 requires-python = ">=3.11"
 # PEP 639 licence expression. PolyForm Noncommercial is not OSI-approved and has no
 # standard SPDX id, so it is named by LicenseRef pointing at the full text in LICENSE.
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
-dependencies = ["numpy>=1.26"]
+license-files = ["LICENSE"]
+keywords = ["audio", "alignment", "drift", "resampling", "splice"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: End Users/Desktop",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
+# Arrays are not optional here: they are what the library is.
+dependencies = ["numpy>=1.26", "mkvkit>=0.0.1"]
 
 [project.scripts]
 dubalign = "dubalign.cli:main"
 
 [project.optional-dependencies]
-changepoint = ["scipy>=1.11"]
+# changepoint detection and the windowed-sinc resampling kernels
+align = ["numpy>=1.26", "scipy>=1.11"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.version]
 path = "src/dubalign/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dubalign"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "README.md", "LICENSE"]

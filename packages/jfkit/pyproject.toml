@@ -11,16 +11,32 @@ requires-python = ">=3.11"
 # PEP 639 licence expression. PolyForm Noncommercial is not OSI-approved and has no
 # standard SPDX id, so it is named by LicenseRef pointing at the full text in LICENSE.
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
-dependencies = []
+license-files = ["LICENSE"]
+keywords = ["jellyfin", "media-server", "metadata", "administration"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: System Administrators",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Video",
+]
+# mkvkit carries the config model, the tool discovery and the logging setup
+# that both packages load. It is standard library only itself, so this costs a
+# caller nothing, and it survives a later split as an ordinary dependency.
+dependencies = ["mkvkit>=0.0.1"]
 
 [project.scripts]
 jfkit = "jfkit.cli:main"
 
 [project.optional-dependencies]
-files = ["mkvkit"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.version]
 path = "src/jfkit/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jfkit"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "README.md", "LICENSE"]
