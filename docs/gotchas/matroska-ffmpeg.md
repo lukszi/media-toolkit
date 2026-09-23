@@ -6,7 +6,9 @@ particular programs, not documentation, and they go stale.
 
 **Confirmed against MKVToolNix 84 and ffmpeg 7.1, September 2026**, over
 files of mixed provenance. Where a number is quoted it is an illustration of
-scale, not a constant of nature.
+scale, not a constant of nature. A few later entries
+were found while packaging this and were confirmed against MKVToolNix 97 and
+ffmpeg 8.0; each of those says so where it is confirmed.
 
 Every example uses an invented title and an invented path. `mkvkit` implements
 the safe form of most of this; the module is named where it does.
@@ -149,6 +151,25 @@ from an "only X changed" diff: the identification format version, the file
 name, and the container's duration, muxing and writing application, and the
 two date fields. Everything else must be equal.
 
+### 1.8 The two programs spell a language code differently
+
+**Symptom.** The same track comes back as `fre` from the identification output
+and `fra` from the probe, and a comparison between the two reports a
+disagreement on every affected track.
+
+**Cause.** About twenty languages have two codes in the same standard, a
+bibliographic one and a terminological one. The identification output prints
+the bibliographic spelling; the probe prints the terminological one. Both are
+correct and they are the same language.
+
+**Fix.** Canonicalise every code the moment it enters your program and keep the
+raw spelling beside it for reports. `mkvkit.langcodes.canonical` does that, and
+`mkvkit.langcodes.bibliographic` converts back for the one element that insists
+on the other spelling -- a chapter display's language.
+
+**Confirmed.** MKVToolNix 97 and ffmpeg 8.0, September 2026, on a synthetic
+file whose header was written as `fra` and read back as `fre`.
+
 ---
 
 ## 2. The header editor
@@ -201,10 +222,13 @@ tags document you did not build from the file's current one.
 lost and re-added.
 
 **Cause.** The editor re-emits the target block in its own normal form: it
-drops the default target-type value and adds an explicit target type.
+drops the default target-type value and adds an explicit target type. It also
+writes a tag-language element into every simple tag it touches, so even the
+simple tags come back looking different from the ones you wrote.
 
 **Fix.** Compare tags as a sorted list of `(track identifiers, name, value)`
-triples and ignore the rest of the target block.
+triples and ignore the rest of the target block, the target type and the
+per-tag language. `mkvkit.tags.TagSet.triples` is exactly that list.
 
 **Confirmed.** With that keying, a pass that added one provenance tag to
 a batch of files verified as "every pre-existing tag preserved, exactly one new
@@ -224,6 +248,23 @@ header void space and damaged nothing; the zeros predated it.
 checks: the identification tool and the probe both report the **full**
 duration, because the header is intact. Only a full sequential decode, or a
 scan for a zero-filled tail, finds it.
+
+### 2.6 Select a track by its identifier, not by its position
+
+**Symptom.** A pass that edits "the second audio track" edits the wrong track
+on the one file whose tracks are not in the order everything else is.
+
+**Cause.** The editor's positional selector counts tracks of a type in file
+order. That order is a property of how the file was muxed, not of what the
+tracks are, and nothing keeps it consistent across a collection.
+
+**Fix.** Every track carries a unique identifier; the editor will select on it
+directly. Read the identifier in the same pass that decides what to change,
+and the selector cannot drift from the decision. `mkvkit.propedit` takes an
+identifier and refuses anything else.
+
+**Confirmed.** MKVToolNix 97, September 2026. The positional form is still
+what every hand-written pass reaches for, which is why this entry exists.
 
 ---
 
@@ -264,6 +305,19 @@ The rest had no such tag and were unaffected.
 **Second-order consequence.** Any later tags write on such a file must merge
 rather than replace (2.3), or the override you just corrected is deleted --
 or, worse, an old wrong one is resurrected.
+
+**You can detect this from either program, and it is worth doing from both.**
+The identification output carries the tag's value in a property of its own,
+beside the header's -- so a single call tells you both what the header says and
+what the file will actually be read as. The probe tells you the same thing a
+different way: the key it returns is upper case when the value came from a tag
+and lower case when it came from the header. `mkvkit.probe` keeps both and
+reports the pair as a disagreement before anything writes, which is what lets
+a language edit be refused rather than silently wasted.
+
+**Confirmed.** MKVToolNix 97 and ffmpeg 8.0, September 2026, on a synthetic
+file with an English header and a French tag: the identification output
+reported both values in one call and the probe reported the tag's.
 
 ---
 
@@ -313,7 +367,27 @@ kept stream's hash matched and the new duration is *shorter*; then it is a
 note carrying the measured difference. If the hashes did not match, or the
 duration grew, it stays a failure.
 
-### 4.5 The discipline, in six lines
+### 4.5 A rebuild renumbers the identifiers your tags are keyed on
+
+**Symptom.** A rebuild that dropped one audio track verifies as having lost
+every tag in the file, including tags on tracks that are still there.
+
+**Cause.** Two things at once. Tags are keyed on the track identifier, and the
+muxer regenerates every identifier when it writes a new file -- so the keys on
+both sides are different numbers for the same tracks. And the muxer writes its
+own accounting tags (byte counts, frame counts, duration, the writing
+application), which it recomputes for the file it is producing.
+
+**Fix.** Map the old identifiers onto the new ones by position among the kept
+tracks before comparing, and exclude the accounting tags by name. What is left
+is the tags somebody chose, which is the set worth defending. A tag about a
+track that is genuinely gone went with the track: that is a note, not a loss.
+
+**Confirmed.** MKVToolNix 97 and ffmpeg 8.0, September 2026. Found by running
+a strict tag comparison across a real rebuild of a synthetic file, where it
+reported nine lost tags and no real loss had occurred.
+
+### 4.6 The discipline, in six lines
 
 - Save a full identification signature **before** any edit and diff everything
   that must not have changed. "The command exited zero" is not verification,
