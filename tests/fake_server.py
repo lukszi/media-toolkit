@@ -12,7 +12,10 @@ precisely because they are the ones that mislead:
   later, which is what makes "read it once afterwards" a broken check;
 * an update route that keeps some of the fields it is sent and drops others
   on the floor, so the table of which is which has something to be tested
-  against.
+  against;
+* a list-of-libraries route that answers with an identifier of nothing and
+  options of nothing when the stored paths do not match, which is what a
+  moved data directory looks like from the outside.
 
 Every identifier here is the all-zero fixture shape and every title is from
 the invented cast.
@@ -129,6 +132,12 @@ class Recorder:
     items: list[dict[str, Any]] = field(default_factory=lambda: copy.deepcopy(ITEMS))
     #: play state per user, over and above what each record carries
     user_data: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    #: what the list-of-libraries route answers with
+    virtual_folders: list[dict[str, Any]] = field(default_factory=list)
+    #: library id -> where its options document lives, so a write can land
+    options_documents: dict[str, Any] = field(default_factory=dict)
+    #: every library-options body that was sent
+    options_writes: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     #: item id -> how many more reads answer with the pre-refresh record
     stale_reads: dict[str, int] = field(default_factory=dict)
     #: what a refresh changes once it has caught up
@@ -177,6 +186,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "no token"})
             return
 
+        if route == "/Library/VirtualFolders":
+            self._send(200, self.recorder.virtual_folders)
+            return
         if route == "/Sessions":
             self._send(200, self.recorder.sessions)
             return
@@ -216,6 +228,9 @@ class _Handler(BaseHTTPRequestHandler):
             item_id = route.split("/")[2]
             self.recorder.refreshed.append(item_id)
             self._send(204)
+            return
+        if route == "/Library/VirtualFolders/LibraryOptions":
+            self._write_library_options(body or {})
             return
         if route == "/Library/Media/Updated":
             self.recorder.notifications += list((body or {}).get("Updates") or [])
@@ -274,6 +289,15 @@ class _Handler(BaseHTTPRequestHandler):
             found[key] = body.get(key)
         self._send(204)
 
+    def _write_library_options(self, body: dict[str, Any]) -> None:
+        library_id = str(body.get("Id") or "")
+        options = dict(body.get("LibraryOptions") or {})
+        self.recorder.options_writes.append((library_id, options))
+        document = self.recorder.options_documents.get(library_id)
+        if document is not None:
+            write_options_document(document, options)
+        self._send(204)
+
     def _apply_identity(self, item_id: str, body: dict[str, Any]) -> None:
         found = self.recorder.find(item_id)
         if found is None:
@@ -310,6 +334,32 @@ class _Handler(BaseHTTPRequestHandler):
         start = int(query.get("startIndex", ["0"])[0])
         limit = int(query.get("limit", ["500"])[0])
         return {"Items": rows[start:start + limit], "TotalRecordCount": len(rows)}
+
+
+def write_options_document(path: Any, values: dict[str, Any]) -> None:
+    """Write an options document the way a server writes one back.
+
+    Every field it was given, in a stable order. The interesting case -- a
+    document that omits the fields still at their defaults -- is written by
+    hand in the test that is about it.
+    """
+    from pathlib import Path as _Path
+
+    lines = ["<LibraryOptions>"]
+    for key in sorted(values):
+        value = values[key]
+        if isinstance(value, bool):
+            lines.append(f"  <{key}>{'true' if value else 'false'}</{key}>")
+        elif isinstance(value, int):
+            lines.append(f"  <{key}>{value}</{key}>")
+        elif isinstance(value, str):
+            lines.append(f"  <{key}>{value}</{key}>")
+        elif isinstance(value, list) and all(isinstance(v, str) for v in value):
+            inner = "".join(f"<string>{v}</string>" for v in value)
+            lines.append(f"  <{key}>{inner}</{key}>")
+    lines.append("</LibraryOptions>")
+    text = "\n".join(lines) + "\n"
+    _Path(path).write_text(text, encoding="utf-8", newline="\n")
 
 
 #: The environment variable the fixture client resolves its credential from.
