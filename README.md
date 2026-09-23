@@ -80,12 +80,27 @@ singleton, nothing that hands a caller a token by being imported.
 
 Validation reports *every* problem in one message, not the first one it hits.
 
-## What is in the first release
+## What is released
 
-`mkvkit` 0.1.0 and `jfkit` 0.1.0. `dubalign` is not released: it is a set of
+`mkvkit` 0.2.0 and `jfkit` 0.1.0. `dubalign` is not released: it is a set of
 skeletons and its version says so.
 
-Two things work end to end, and both of them read rather than write:
+**Edit a Matroska file, and prove you changed only what you meant to.**
+`mkvkit probe` says what is in a file, from both programs that can describe
+one. `mkvkit propedit` changes a track header in place, selecting the track by
+the identifier it carries, and reads the file back to prove nothing else
+moved. `mkvkit remux` rebuilds a file without the tracks a policy allows
+dropping -- into a staging directory, never over the input -- and
+`mkvkit verify` compares the two files against a *declared* difference, with
+one payload hash per stream as the evidence. `mkvkit swap` then parks the
+original and puts the rebuild in its exact path. `mkvkit chapters` and
+`mkvkit tags` read, check and write the two elements that are easiest to
+damage by accident. Everything that writes defaults to a dry run.
+
+The reasoning behind all of it is `docs/methods/verification-discipline.md`,
+and every rule in that document names the function that implements it.
+
+Two more things work end to end, and both of them read rather than write:
 
 **Identify the spoken language of the audio tracks in a library.**
 `mkvkit langid jobs` lists the tracks, `scan` reads them and records what a
@@ -101,7 +116,8 @@ expensive mistake. It is pinned by a table of sixty-five invented names and it
 records the release it was checked against.
 
 Beside them, two references that stand on their own: `docs/gotchas/` on one
-media server release and on Matroska and ffmpeg. Every entry carries the
+media server release and on Matroska and ffmpeg, and a guide to the file side
+in `docs/mkvkit.md`. Every entry carries the
 symptom, the cause, the fix, how it was confirmed, and the version it was
 confirmed against.
 
