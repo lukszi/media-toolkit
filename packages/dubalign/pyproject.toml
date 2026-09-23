@@ -15,6 +15,7 @@ license-files = ["LICENSE"]
 keywords = ["audio", "alignment", "drift", "resampling", "splice"]
 classifiers = [
   "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
   "Intended Audience :: End Users/Desktop",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -22,7 +23,7 @@ classifiers = [
   "Topic :: Multimedia :: Sound/Audio :: Analysis",
 ]
 # Arrays are not optional here: they are what the library is.
-dependencies = ["numpy>=1.26", "mkvkit>=0.0.1"]
+dependencies = ["numpy>=1.26", "mkvkit>=0.2"]
 
 [project.scripts]
 dubalign = "dubalign.cli:main"

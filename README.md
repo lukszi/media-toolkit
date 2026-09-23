@@ -82,8 +82,7 @@ Validation reports *every* problem in one message, not the first one it hits.
 
 ## What is released
 
-`mkvkit` 0.2.0 and `jfkit` 0.1.0. `dubalign` is not released: it is a set of
-skeletons and its version says so.
+`mkvkit` 0.2.0, `jfkit` 0.1.0 and `dubalign` 0.1.0.
 
 **Edit a Matroska file, and prove you changed only what you meant to.**
 `mkvkit probe` says what is in a file, from both programs that can describe
@@ -109,20 +108,36 @@ deciding is pure arithmetic over stored probability vectors, so it can be
 re-run against evidence collected months ago when a threshold changes -- and
 it runs with nothing installed.
 
+**Put an audio track from one transfer onto a different transfer of the same
+programme.** `dubalign map` measures the offset across the whole runtime rather
+than at one point, because one point cannot tell a constant offset from a step
+from a rate difference. `dubalign changepoints` finds the jumps instead of
+having them typed in, and pins each one down to a few tens of milliseconds.
+`dubalign plan` writes a document you can read, diff and edit, with the joins
+placed on the jumps and scored on the span each one actually repeats or drops.
+`dubalign splice` builds it, `dubalign encode` writes it, and `dubalign verify`
+scans the whole result against the keeper and holds every window to 40 ms --
+every window, not the average. `dubalign controls` runs four questions whose
+answers were written down first, and nothing else is believed until it passes.
+
 **Predict how a media server will read a filename, before renaming.**
 `jfkit naming PATH...` prints what each name would be read as and exits
 non-zero if any of them would be read as an episode *range*, which is the
 expensive mistake. It is pinned by a table of sixty-five invented names and it
 records the release it was checked against.
 
-Beside them, two references that stand on their own: `docs/gotchas/` on one
-media server release and on Matroska and ffmpeg, and a guide to the file side
-in `docs/mkvkit.md`. Every entry carries the
-symptom, the cause, the fix, how it was confirmed, and the version it was
-confirmed against.
+Beside them, references that stand on their own: `docs/gotchas/` on one media
+server release and on Matroska and ffmpeg, a guide to the file side in
+`docs/mkvkit.md`, and `docs/methods/` on the verification discipline and on
+aligning a dub to a different transfer. Every gotcha entry carries the symptom,
+the cause, the fix, how it was confirmed, and the version it was confirmed
+against; every method document names the function that implements each of its
+rules and ends with what is *not* implemented.
 
-Everything else in the tree is a documented skeleton that raises rather than
-guesses. Each package's `CHANGELOG.md` says which is which.
+What is left in the tree is a documented skeleton that raises rather than
+guesses -- the half of chapter-name verification that needs the content rather
+than the arithmetic, and the planner that works over a whole collection. Each
+package's `CHANGELOG.md` says which is which.
 
 ## Safety principles
 
@@ -147,14 +162,18 @@ allowed, and measurement happens in the rendered output, never in an
 intermediate.
 
 **Known-answer controls before trusting a measurement.** A measurement
-pipeline is run against a pair whose answer is already known -- a track against
-itself must read zero, a deliberately shifted pair must return the shift it was
-given -- before any of its numbers are believed.
+pipeline is run against pairs whose answers are already known -- a track
+against itself must read zero, a deliberately shifted pair must return the
+shift it was given, the same pair measured at two starting points must agree,
+and moving the *data* by a known amount must move the answer -- before any of
+its numbers are believed. A measurement that has never been given a question
+with a known answer is a number generator that has not yet been caught.
 
 ## About the numbers
 
 Several constants here were fitted against one collection: language-
-identification confidence bars, agreement fractions, window budgets. They ship
+identification confidence bars, agreement fractions, window budgets, and the
+alignment tolerance of 40 ms. They ship
 as documented defaults with the method used to fit them, so they can be
 re-fitted on your own material. They are not universals, and nothing in the
 documentation claims they are.
