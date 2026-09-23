@@ -18,8 +18,14 @@ Only a set that comes out aligned is eligible to be written. Uncertain is a
 verdict, not a rounding error, and a confidently wrong name is worse than no
 name at all.
 
+The half of this that is arithmetic now exists elsewhere: matching two grids,
+in both rate directions, and the rule that a rate-converted candidate may only
+have its names copied onto marks a file already has, live in
+:mod:`mkvkit.chapters.grid`. What is left here is the half that needs the
+content -- audio, frames, a transcriber -- and it is the half the finding is
+about.
+
 Planned public API:
-    grid_match(marks, candidate, *, runtime_s, tol=2.0) -> GridMatch
     collect_evidence(media, marks, *, audio_stream, transcriber) -> list[MarkEvidence]
     shift_score(names, transcripts, *, shifts=range(-4, 5)) -> ShiftScores
     verdict(evidence, shifts, *, rubric=DEFAULT_RUBRIC) -> Verdict
