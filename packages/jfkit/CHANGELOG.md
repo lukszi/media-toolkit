@@ -3,6 +3,25 @@
 This file records what changed and why it is safe to install. Dates are the
 day the work was done.
 
+## Unreleased
+
+### Fixed
+
+- **An applied database pass is refused when it has nowhere to put the copy
+  it takes first.** `maintenance.run_operations()` documented the copy as a
+  standing step of every applied run -- stop, copy, apply, restart, count --
+  but took it only when the caller named a directory, so
+  `maintenance run --apply --reindex` rewrote a file nothing else had a copy
+  of and produced no rollback artefact at all. The library refuses it now and
+  the command line refuses it earlier, with the flag to pass. Found by reading
+  the writing paths against the safety claim in the README rather than by
+  anything failing.
+- **The structural test over the command line now recurses.** It walked the
+  top level only, so the six verbs that live under a group -- `item set`,
+  `libopts set`, `maintenance run`, `maintenance previews`, `segments scope`,
+  `segments cancel` -- were never checked for having two states at all. It
+  names them now, so removing an `--apply` from any of them fails.
+
 ## 0.3.0 -- 2026-09-23
 
 The server side, finished. Every module that was a skeleton at 0.1.0 is now

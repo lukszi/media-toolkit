@@ -347,6 +347,9 @@ def _maintenance_run(args: argparse.Namespace, config: Config) -> int:
     if not operations:
         print("nothing to do: name --repoint or --reindex")
         return 2
+    if args.apply and args.snapshot_dir is None:
+        print("--apply copies the database first: name --snapshot-dir DIR")
+        return 2
     client = client_from(args, config)
     report = maintenance_module.run_operations(
         args.database, operations,

@@ -340,6 +340,12 @@ def run_operations(
 
     The dry run reads a copy and never the original, so it is safe to run
     while everything is up; that is the whole point of having one.
+
+    The copy is not optional on an applied run. ``snapshot_dir`` may be left
+    out while describing, and an applied run without one is refused: these
+    operations rewrite rows in place in a file nothing else has a copy of, and
+    a rollback artefact that the caller had to remember to ask for is not a
+    rollback artefact.
     """
     path = Path(database)
     if client is not None:
@@ -349,6 +355,12 @@ def run_operations(
                 "the server is running " + ", ".join(busy)
                 + "; stopping it now leaves that half-finished"
             )
+
+    if not dry_run and snapshot_dir is None:
+        raise MaintenanceRefused(
+            "an applied run takes a copy of the database first and needs "
+            "somewhere to put it: pass snapshot_dir. Nothing was written."
+        )
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     copy: Path | None = None

@@ -156,8 +156,35 @@ def test_applying_moves_exactly_the_rows_that_matched(
     assert "/srv/media/movies" in " ".join(paths), "the media rows were left alone"
 
 
-def test_a_destination_that_does_not_exist_stops_the_write(
+def test_an_applied_run_refuses_with_nowhere_to_put_the_copy(
     database: Path, controller: ManualServiceController
+) -> None:
+    """The copy is a standing step of an applied run, not an option."""
+    before = database.read_bytes()
+    with pytest.raises(MaintenanceRefused, match="somewhere to put it"):
+        run_operations(
+            database,
+            [RepointPaths(OLD_ROOT, NEW_ROOT, expect_rows=2, exists=always_there)],
+            controller=controller,
+            dry_run=False,
+        )
+    assert database.read_bytes() == before
+    assert controller.is_running(), "the service was stopped before the refusal"
+
+
+def test_describing_without_a_copy_is_still_allowed(
+    database: Path, controller: ManualServiceController
+) -> None:
+    report = run_operations(
+        database,
+        [RepointPaths(OLD_ROOT, NEW_ROOT, expect_rows=2, exists=always_there)],
+        controller=controller,
+    )
+    assert not report.applied and report.snapshot is None
+
+
+def test_a_destination_that_does_not_exist_stops_the_write(
+    database: Path, controller: ManualServiceController, tmp_path: Path
 ) -> None:
     """The precondition, doing its job.
 
@@ -170,19 +197,21 @@ def test_a_destination_that_does_not_exist_stops_the_write(
             database,
             [RepointPaths(OLD_ROOT, NEW_ROOT, exists=lambda _p: False)],
             controller=controller,
+            snapshot_dir=tmp_path / "copies",
             dry_run=False,
         )
     assert counts(database)["BaseItems"] == 3
 
 
 def test_a_row_count_that_is_not_the_expected_one_stops_the_write(
-    database: Path, controller: ManualServiceController
+    database: Path, controller: ManualServiceController, tmp_path: Path
 ) -> None:
     with pytest.raises(MaintenanceRefused, match="were expected"):
         run_operations(
             database,
             [RepointPaths(OLD_ROOT, NEW_ROOT, expect_rows=5, exists=always_there)],
             controller=controller,
+            snapshot_dir=tmp_path / "copies",
             dry_run=False,
         )
 
@@ -221,7 +250,7 @@ def test_rebuilding_the_indexes_leaves_the_rows_alone(
 
 
 def test_the_counts_are_compared_and_a_change_is_reported(
-    database: Path, controller: ManualServiceController
+    database: Path, controller: ManualServiceController, tmp_path: Path
 ) -> None:
     """An operation that removes rows says so, even if it thought it was fine."""
 
@@ -235,7 +264,8 @@ def test_the_counts_are_compared_and_a_change_is_reported(
             return connection.execute("DELETE FROM BaseItems").rowcount
 
     report = run_operations(
-        database, [RemoveEverything()], controller=controller, dry_run=False
+        database, [RemoveEverything()], controller=controller,
+        snapshot_dir=tmp_path / "copies", dry_run=False,
     )
     assert not report.ok
     assert "3 row(s) before, 0 after" in str(report)

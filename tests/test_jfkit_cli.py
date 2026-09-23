@@ -11,6 +11,7 @@ pipelines where nobody is reading the output.
 
 from __future__ import annotations
 
+import argparse
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -70,17 +71,37 @@ def test_every_verb_is_registered() -> None:
     assert set(action.choices) == {"naming", *REGISTRARS}
 
 
+def _writing_parsers(parser: argparse.ArgumentParser, prefix: str = "") -> list[str]:
+    """Every parser under this one that has an --apply, however deeply nested.
+
+    The first version of this walked the top level only, so the verbs that
+    live under a group -- item set, libopts set, maintenance run, segments
+    scope -- were invisible to it and an --apply removed from one of them
+    would not have failed anything.
+    """
+    found: list[str] = []
+    writes = False
+    for action in parser._actions:
+        if action.dest == "apply":
+            assert action.default is False, prefix or "top level"
+            writes = True
+        choices = getattr(action, "choices", None)
+        if isinstance(choices, dict):
+            for name, sub in choices.items():
+                if isinstance(sub, argparse.ArgumentParser):
+                    found += _writing_parsers(sub, f"{prefix} {name}".strip())
+    if writes:
+        found.append(prefix or "top level")
+    return found
+
+
 def test_every_writing_verb_has_two_states_and_defaults_to_the_dry_run() -> None:
     """There is no third state, and no environment variable that flips it."""
-    parser = jfkit_cli.build_parser()
-    commands = next(a for a in parser._actions if a.dest == "command")
-    writing = 0
-    for name, sub in (commands.choices or {}).items():
-        for action in sub._actions:
-            if action.dest == "apply":
-                writing += 1
-                assert action.default is False, name
-    assert writing >= 5
+    writing = _writing_parsers(jfkit_cli.build_parser())
+    for verb in ("item set", "libopts set", "maintenance run",
+                 "maintenance previews", "segments scope", "segments cancel",
+                 "refresh", "notify", "swap", "delete"):
+        assert verb in writing, f"{verb} has no --apply"
 
 
 def test_a_key_value_pair_keeps_the_type_it_looks_like() -> None:
