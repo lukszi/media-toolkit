@@ -1,159 +1,268 @@
-# -*- coding: utf-8 -*-
-"""Minimal EBML scanner: which top-level Segment children exist (Cues, Chapters, ...).
+"""mkvkit.ebml -- which top-level elements a Matroska file carries, cheaply.
 
-Fast path: parse the SeekHead(s) at the head of the Segment, following a SeekHead entry that
-points at a second SeekHead (mkvmerge writes a small one at the front and the full one at the
-end). Only if no SeekHead names Cues do we walk every top-level element, which on a multi-GiB
-file means thousands of random reads.
+One question is asked here and it is worth a module: *does this file have a
+seek index, chapters, tags, attachments?* The identification output does not
+answer it, and the answer decides real behaviour -- a container without an
+index makes every seek a read from byte zero, which is the difference between
+sampling a handful of windows in seconds and in minutes.
+
+The file is read, never decoded. Two paths:
+
+**The index itself.** A muxer writes a small seek head at the front of the
+segment, often pointing at a full one at the end. Following at most four of
+them answers the question with a handful of reads at known offsets, whatever
+the size of the file.
+
+**Walking the segment.** Only when no seek head names the index: step over
+every top-level element by its declared size. On a file of many gigabytes that
+is thousands of seeks, so it is the fallback and never the first try.
+
+Both paths are defensive by construction. A truncated or damaged file returns
+what was readable with a status saying where it stopped, because this runs
+over whole collections and one unreadable file must not end the pass.
 """
-import os
 
-SEEKHEAD = 0x114D9B74
-CUES = 0x1C53BB6B
-CHAPTERS = 0x1043A770
-ATTACHMENTS = 0x1941A469
-TAGS = 0x1254C367
-TRACKS = 0x1654AE6B
-INFO = 0x1549A966
-CLUSTER = 0x1F43B675
-NAMES = {INFO: 'Info', TRACKS: 'Tracks', CUES: 'Cues', CLUSTER: 'Cluster', CHAPTERS: 'Chapters',
-         ATTACHMENTS: 'Attachments', TAGS: 'Tags', SEEKHEAD: 'SeekHead', 0xEC: 'Void', 0xBF: 'CRC-32'}
+# SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
 
+from __future__ import annotations
 
-def _vint(f, keep_marker):
-    b = f.read(1)
-    if not b:
-        return None, 0
-    b0 = b[0]
-    if b0 == 0:
-        return None, 0
-    n, mask = 1, 0x80
-    while not (b0 & mask):
-        mask >>= 1
-        n += 1
-        if n > 8:
-            return None, 0
-    rest = f.read(n - 1)
-    if len(rest) != n - 1:
-        return None, 0
-    val = b0 if keep_marker else (b0 & (mask - 1))
-    for c in rest:
-        val = (val << 8) | c
-    return val, n
+from dataclasses import dataclass
+from pathlib import Path
+from typing import BinaryIO, Final
 
+__all__ = [
+    "ELEMENT_NAMES",
+    "ElementScan",
+    "scan",
+]
 
-def _vint_buf(buf, i, keep_marker):
-    if i >= len(buf):
-        return None, i
-    b0 = buf[i]
-    if b0 == 0:
-        return None, i
-    n, mask = 1, 0x80
-    while not (b0 & mask):
-        mask >>= 1
-        n += 1
-        if n > 8:
-            return None, i
-    if i + n > len(buf):
-        return None, i
-    val = b0 if keep_marker else (b0 & (mask - 1))
-    for c in buf[i + 1:i + n]:
-        val = (val << 8) | c
-    return val, i + n
+# Element identifiers, as they are written on disk (with the length marker).
+_EBML_HEADER: Final = 0x1A45DFA3
+_SEGMENT: Final = 0x18538067
+_SEEKHEAD: Final = 0x114D9B74
+_CUES: Final = 0x1C53BB6B
+_CHAPTERS: Final = 0x1043A770
+_ATTACHMENTS: Final = 0x1941A469
+_TAGS: Final = 0x1254C367
+_TRACKS: Final = 0x1654AE6B
+_INFO: Final = 0x1549A966
+_CLUSTER: Final = 0x1F43B675
+_SEEK: Final = 0x4DBB
+_SEEK_ID: Final = 0x53AB
+_SEEK_POSITION: Final = 0x53AC
+
+#: Identifier -> the name this package reports.
+ELEMENT_NAMES: Final[dict[int, str]] = {
+    _INFO: "Info",
+    _TRACKS: "Tracks",
+    _CUES: "Cues",
+    _CLUSTER: "Cluster",
+    _CHAPTERS: "Chapters",
+    _ATTACHMENTS: "Attachments",
+    _TAGS: "Tags",
+    _SEEKHEAD: "SeekHead",
+    0xEC: "Void",
+    0xBF: "CRC-32",
+}
+
+#: An all-ones length means "unknown", and it is not a size to skip over.
+_UNKNOWN_LENGTH: Final = (1 << 56) - 1
+#: A seek head larger than this is not a seek head.
+_MAX_SEEKHEAD_BYTES: Final = 4 << 20
+#: How many chained seek heads are followed before giving up.
+_MAX_SEEKHEAD_CHAIN: Final = 4
 
 
-def _parse_seekhead(data):
-    """-> {element id: position relative to the segment data start}"""
-    out = {}
-    i = 0
-    while i < len(data):
-        eid, j = _vint_buf(data, i, True)
-        if eid is None:
+@dataclass(frozen=True)
+class ElementScan:
+    """What the scan found, and how far it got.
+
+    ``present`` holds elements seen directly, ``indexed`` those a seek head
+    names. The union is what a caller normally wants: an element the index
+    points at is in the file whether or not the walk reached it.
+    """
+
+    present: frozenset[str] = frozenset()
+    indexed: frozenset[str] = frozenset()
+    status: str = "ok"
+
+    @property
+    def names(self) -> frozenset[str]:
+        return self.present | self.indexed
+
+    @property
+    def has_cues(self) -> bool:
+        return "Cues" in self.names
+
+    @property
+    def is_matroska(self) -> bool:
+        """Whether the file begins the way a Matroska file has to begin."""
+        return self.status not in {"not-ebml", "no-segment", "empty"}
+
+
+def scan(path: Path | str) -> ElementScan:
+    """Read the top-level structure of one file."""
+    target = Path(path)
+    size = target.stat().st_size
+    with target.open("rb") as handle:
+        identifier = _read_vint(handle, keep_marker=True)
+        if identifier is None:
+            return ElementScan(status="empty")
+        if identifier != _EBML_HEADER:
+            return ElementScan(status="not-ebml")
+        header_length = _read_vint(handle, keep_marker=False)
+        if header_length is None:
+            return ElementScan(status="not-ebml")
+        handle.seek(header_length, 1)
+        identifier = _read_vint(handle, keep_marker=True)
+        if identifier != _SEGMENT:
+            return ElementScan(status="no-segment")
+        declared = _read_vint(handle, keep_marker=False)
+        start = handle.tell()
+        end = start + declared if declared and declared < _UNKNOWN_LENGTH else size
+
+        indexed, found_cues = _follow_seek_heads(handle, start)
+        if found_cues:
+            return ElementScan(
+                present=frozenset({"SeekHead"}), indexed=indexed, status="ok-seekhead"
+            )
+        present, status = _walk(handle, start, end)
+        return ElementScan(present=present, indexed=indexed, status=status)
+
+
+# ------------------------------------------------------------------- the paths
+def _follow_seek_heads(
+    handle: BinaryIO, segment_start: int
+) -> tuple[frozenset[str], bool]:
+    """Names the index promises, and whether it promises the seek index itself."""
+    names: set[str] = set()
+    visited: set[int] = set()
+    position = segment_start
+    for _ in range(_MAX_SEEKHEAD_CHAIN):
+        handle.seek(position)
+        if _read_vint(handle, keep_marker=True) != _SEEKHEAD:
+            return frozenset(names), False
+        length = _read_vint(handle, keep_marker=False)
+        if length is None or length > _MAX_SEEKHEAD_BYTES:
+            return frozenset(names), False
+        entries = _parse_seek_head(handle.read(length))
+        names.update(ELEMENT_NAMES[i] for i in entries if i in ELEMENT_NAMES)
+        if _CUES in entries:
+            return frozenset(names), True
+        following = entries.get(_SEEKHEAD)
+        if following is None or following in visited:
+            return frozenset(names), False
+        visited.add(following)
+        position = segment_start + following
+    return frozenset(names), False
+
+
+def _walk(handle: BinaryIO, start: int, end: int) -> tuple[frozenset[str], str]:
+    """Step over every top-level element by its declared size."""
+    names: set[str] = set()
+    handle.seek(start)
+    while handle.tell() < end:
+        identifier = _read_vint(handle, keep_marker=True)
+        if identifier is None:
+            return frozenset(names), "truncated"
+        length = _read_vint(handle, keep_marker=False)
+        if length is None:
+            return frozenset(names), "truncated"
+        names.add(ELEMENT_NAMES.get(identifier, hex(identifier)))
+        if length >= _UNKNOWN_LENGTH:
+            # An element of unknown length can only be stepped over by parsing
+            # its children, which is a decode. Report what is known instead.
+            return frozenset(names), "ok-walk-partial"
+        handle.seek(length, 1)
+    return frozenset(names), "ok-walk"
+
+
+def _parse_seek_head(data: bytes) -> dict[int, int]:
+    """Element identifier -> position relative to the start of the segment."""
+    out: dict[int, int] = {}
+    offset = 0
+    while offset < len(data):
+        identifier, offset = _buffer_vint(data, offset, keep_marker=True)
+        if identifier is None:
             break
-        esz, j = _vint_buf(data, j, False)
-        if esz is None:
+        length, offset = _buffer_vint(data, offset, keep_marker=False)
+        if length is None:
             break
-        if eid == 0x4DBB:                       # Seek
-            sub = data[j:j + esz]
-            k, sid, spos = 0, None, None
-            while k < len(sub):
-                sk, m = _vint_buf(sub, k, True)
-                if sk is None:
-                    break
-                sl, m = _vint_buf(sub, m, False)
-                if sl is None:
-                    break
-                v = sub[m:m + sl]
-                if sk == 0x53AB:                # SeekID
-                    sid = int.from_bytes(v, 'big') if v else None
-                elif sk == 0x53AC:              # SeekPosition
-                    spos = int.from_bytes(v, 'big') if v else None
-                k = m + sl
-            if sid is not None and spos is not None:
-                out.setdefault(sid, spos)
-        i = j + esz
+        if identifier == _SEEK:
+            entry = data[offset : offset + length]
+            seek_id, seek_position = _parse_seek(entry)
+            if seek_id is not None and seek_position is not None:
+                out.setdefault(seek_id, seek_position)
+        offset += length
     return out
 
 
-def toplevel(path):
-    """returns (set_of_top_level_names, set_of_names_the_seek_index_points_at, status)"""
-    found, seek = set(), set()
-    size = os.path.getsize(path)
-    with open(path, 'rb') as f:
-        eid, _ = _vint(f, True)
-        if eid != 0x1A45DFA3:
-            return found, seek, 'not-ebml'
-        esz, _ = _vint(f, False)
-        f.seek(esz, 1)
-        eid, _ = _vint(f, True)
-        if eid != 0x18538067:
-            return found, seek, 'no-segment'
-        esz, _ = _vint(f, False)
-        seg_start = f.tell()
-        seg_end = seg_start + esz if esz and esz < (1 << 56) - 1 else size
-
-        # --- fast path: the seek index --------------------------------------
-        seen_sh = set()
-        pos = seg_start
-        for _ in range(4):
-            f.seek(pos)
-            cid, _ = _vint(f, True)
-            if cid != SEEKHEAD:
-                break
-            csz, _ = _vint(f, False)
-            if csz is None or csz > 4 << 20:
-                break
-            entries = _parse_seekhead(f.read(csz))
-            for k in entries:
-                if k in NAMES:
-                    seek.add(NAMES[k])
-            if CUES in entries:
-                found.add('SeekHead')
-                return found, seek, 'ok-seekhead'
-            nxt = entries.get(SEEKHEAD)
-            if nxt is None or nxt in seen_sh:
-                break
-            seen_sh.add(nxt)
-            pos = seg_start + nxt
-
-        # --- slow path: walk every top-level element -------------------------
-        f.seek(seg_start)
-        while f.tell() < seg_end:
-            cid, _ = _vint(f, True)
-            if cid is None:
-                break
-            csz, _ = _vint(f, False)
-            if csz is None:
-                break
-            found.add(NAMES.get(cid, hex(cid)))
-            if csz >= (1 << 56) - 1:
-                break
-            f.seek(csz, 1)
-    return found, seek, 'ok-walk'
+def _parse_seek(entry: bytes) -> tuple[int | None, int | None]:
+    identifier: int | None = None
+    position: int | None = None
+    offset = 0
+    while offset < len(entry):
+        key, offset = _buffer_vint(entry, offset, keep_marker=True)
+        if key is None:
+            break
+        length, offset = _buffer_vint(entry, offset, keep_marker=False)
+        if length is None:
+            break
+        value = entry[offset : offset + length]
+        if key == _SEEK_ID and value:
+            identifier = int.from_bytes(value, "big")
+        elif key == _SEEK_POSITION and value:
+            position = int.from_bytes(value, "big")
+        offset += length
+    return identifier, position
 
 
-if __name__ == '__main__':
-    import sys, time
-    for p in sys.argv[1:]:
-        t = time.time()
-        print('%.2fs' % (time.time() - t), toplevel(p), p)
+# ----------------------------------------------------------- variable integers
+def _width(first: int) -> int | None:
+    """How many bytes this variable-length integer occupies, from its first byte."""
+    if first == 0:
+        return None
+    width, mask = 1, 0x80
+    while not first & mask:
+        mask >>= 1
+        width += 1
+        if width > 8:
+            return None
+    return width
+
+
+def _read_vint(handle: BinaryIO, *, keep_marker: bool) -> int | None:
+    """Read one variable-length integer from the file.
+
+    ``keep_marker`` distinguishes the two uses: an element identifier is the
+    bytes as written, a length has its leading marker bit removed.
+    """
+    head = handle.read(1)
+    if not head:
+        return None
+    width = _width(head[0])
+    if width is None:
+        return None
+    rest = handle.read(width - 1)
+    if len(rest) != width - 1:
+        return None
+    value = head[0] if keep_marker else head[0] & ((0x80 >> (width - 1)) - 1)
+    for byte in rest:
+        value = (value << 8) | byte
+    return value
+
+
+def _buffer_vint(
+    data: bytes, offset: int, *, keep_marker: bool
+) -> tuple[int | None, int]:
+    """The same, from a buffer; returns the value and the offset after it."""
+    if offset >= len(data):
+        return None, offset
+    first = data[offset]
+    width = _width(first)
+    if width is None or offset + width > len(data):
+        return None, offset
+    value = first if keep_marker else first & ((0x80 >> (width - 1)) - 1)
+    for byte in data[offset + 1 : offset + width]:
+        value = (value << 8) | byte
+    return value, offset + width

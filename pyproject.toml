@@ -41,12 +41,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# These two arrived as they are and have not been rewritten yet. They are
+# What is left of the list of modules that arrived as they were. Each is
 # exempted by name rather than by relaxing the rules for everything, and each
 # exemption disappears when the module is packaged properly -- which is also
 # when it gets its tests. Nothing new is added to this list, and the list only
 # ever gets shorter.
-"packages/mkvkit/src/mkvkit/ebml.py" = ["E401", "E501", "I001", "UP009"]
 "packages/dubalign/src/dubalign/align.py" = ["E702", "RUF046", "RUF059"]
 
 [tool.mypy]
@@ -59,10 +58,10 @@ mypy_path = [
   "packages/dubalign/src",
 ]
 
-# The same two modules the lint exemptions name. Annotating them is part of
-# packaging them properly, which happens at the milestone that also gives them
-# their tests; excluding them by name keeps the setting strict for everything
-# else instead of quietly lowering it for the whole tree.
+# The same module the lint exemption names. Annotating it is part of packaging
+# it properly, which happens at the milestone that also gives it its tests;
+# excluding it by name keeps the setting strict for everything else instead of
+# quietly lowering it for the whole tree.
 [[tool.mypy.overrides]]
-module = ["mkvkit.ebml", "dubalign.align"]
+module = ["dubalign.align"]
 ignore_errors = true
