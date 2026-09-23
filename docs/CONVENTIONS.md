@@ -15,9 +15,17 @@ Series: `Northwind`, `Harbour Lights`, `The Longest Night`, `Signal Hill`.
 Release-shaped example filename:
 `Northwind.S01E03.1080p.WEB-DL.x264-EXAMPLE.mkv`.
 
+Example filenames used in docstrings and documents, and nowhere else:
+`Northwind - S01E03 - The Quiet Harbour.mkv`,
+`Harbour Lights 1-05 Pilot.avi`,
+`Northwind.S01E03E04.mkv`, `Harbour.Lights.S01E02.German.DL.mkv`,
+`Harbour.Lights.S01E02.mkv`.
+The second one is the shape that a server reads as an episode *range*; it is
+listed here so it can be written down in the module that predicts it.
+
 Paths: `/srv/media/movies`, `/srv/media/series`, `/srv/staging`,
 `/srv/parked`. A Windows example is written as a generic location, never as a
-profile directory.
+profile directory: `C:/Media/Movies` and `C:/Media/Series`.
 
 Identifiers: `00000000-0000-0000-0000-00000000000N`.
 
