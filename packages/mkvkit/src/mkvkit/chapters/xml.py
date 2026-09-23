@@ -71,8 +71,14 @@ LAST_MARK_MARGIN_S: Final = 30.0
 #: Two marks closer together than this are the same mark written twice.
 SAME_MARK_NS: Final = 1_000_000
 
-#: The word for a chapter, in the languages this shape has been seen in.
-_LABEL_WORD = r"(?i:chapters?|kapitel|chapitre|capitolo|cap[ií]tulo|scenes?|szene|part|teil)"
+#: The word for a chapter, in the languages this shape has been seen in. The
+#: list grows whenever a published list turns up spelling it another way: a
+#: word missing from here is a label that gets counted as a name, and a list
+#: of labels counted as names is a list of labels written into a file.
+_LABEL_WORD = (
+    r"(?i:chapters?|kapitel|kapitola|chapitre|capitolo|cap[ií]tulo|hoofdstuk"
+    r"|rozdzia[lł]|scenes?|szene|part|teil)"
+)
 #: A number spelled out. Only counted as a label after the word above: a mark
 #: legitimately called "Seven" is a name, "Chapter Seven" is not.
 _LABEL_NUMBER = (
