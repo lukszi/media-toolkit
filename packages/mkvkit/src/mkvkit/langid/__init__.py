@@ -5,7 +5,8 @@ The package is in three layers, and they are kept apart on purpose:
 ``worker``  reads audio and records what a detector said, per window;
 ``ladder``  decides what a set of windows means, as pure arithmetic;
 ``priors``  turns context into evidence that can only ever lower a bar;
-``review``  applies the rules to collected evidence and queues what is left.
+``review``  applies the rules to collected evidence and queues what is left;
+``report``  says what was found, and what is still open.
 
 Evidence is collected once and can be decided many times. Changing a
 threshold then costs a second rather than another pass over the library --
@@ -42,6 +43,7 @@ from .priors import (
     sibling_prior,
 )
 from .review import Outcome, Rescan, RescanReason, decide, decide_all, rescan_queue
+from .report import Summary, render_markdown, render_tsv, summarise
 from .worker import (
     DEFAULT_OFFSETS,
     RETRY_OFFSETS,
@@ -77,6 +79,7 @@ __all__ = [
     "SiblingVote",
     "SpeechGate",
     "StageBar",
+    "Summary",
     "Support",
     "TrackEvidence",
     "Verdict",
@@ -90,10 +93,13 @@ __all__ = [
     "decide_all",
     "mixed_split",
     "release_token_prior",
+    "render_markdown",
+    "render_tsv",
     "rescan_queue",
     "scan_track",
     "settle",
     "sibling_prior",
+    "summarise",
     "trimmed_aggregate",
     "window_starts",
 ]
