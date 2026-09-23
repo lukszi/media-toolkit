@@ -7,9 +7,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deny-scan:
-    # The privacy gate runs first and alone: if it fails, nothing else matters.
+  # The privacy gate runs first and alone. If it fails nothing else matters,
+  # and nothing else should waste a runner finding that out.
+  gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,22 +23,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: deny scan (tree, diff and commit messages)
-        run: python tests/deny_scan.py --tree . --diff --messages
+      - name: the gate must fail when it should
+        run: python tests/deny_scan.py --canary
+      - name: scan the tree
+        run: python tests/deny_scan.py --tree .
+      - name: scan this change and its messages
+        if: github.event_name == 'pull_request'
+        run: |
+          python tests/deny_scan.py \
+            --diff "${{ github.event.pull_request.base.sha }}..${{ github.sha }}" \
+            --messages "${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
 
   gitleaks:
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v2
         env:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
+  lint:
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff mypy
+      - run: ruff check .
+      - name: install the packages so the type checker sees them
+        run: pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
+      - run: mypy
+
   test:
-    needs: [deny-scan]
+    needs: [gate]
     strategy:
       fail-fast: false
       matrix:
@@ -49,10 +76,22 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
-          pip install pytest ruff mypy
-      - name: lint
-        run: ruff check .
-      - name: types
-        run: mypy packages
-      - name: tests without external tools
+          pip install pytest
+
+      # First, the run that has to work on a machine with nothing installed.
+      # If this selection ever needs a program, a test has grown a dependency
+      # it did not declare.
+      - name: tests with no external programs
         run: pytest -m "not needs_ffmpeg and not needs_mkvtoolnix and not needs_asr"
+
+      - name: install ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg mkvtoolnix
+      - name: install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install -y ffmpeg mkvtoolnix
+
+      - name: build the fixtures
+        run: python -m tests.fixtures build
+      - name: the whole suite, minus the one that wants a speech model
+        run: pytest -m "not needs_asr"
