@@ -25,8 +25,15 @@ line. A gate that echoes the secret it found has published it into the build
 log.
 
 Nothing in this file contains an example of what it looks for: the canary
-assembles its planted values at run time, so the scanner does not trip over
-its own test data.
+assembles its planted values at run time, and the rule table is written in
+pieces that the language joins and the scanner does not, so the gate never
+trips over itself.
+
+**The rule table is written, not typed.** It comes from one table that also
+produced this repository's history, and a generator rewrites the block between
+the markers below and then checks that every rule here compiles to exactly the
+pattern it came from. Editing it by hand is how the two copies drift apart,
+which is precisely what a written table is for.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
@@ -70,102 +77,96 @@ def _rule(id_: str, pattern: str, why: str, allow: Sequence[str] = ()) -> Rule:
     return Rule(id_, re.compile(pattern), why, tuple(allow))
 
 
-def _alternation(*parts: tuple[str, ...]) -> str:
-    """Join word pieces into an alternation at run time.
-
-    The pieces are split so that this file does not contain the very literals
-    it refuses elsewhere in the tree -- otherwise the gate flags itself, and
-    the usual cure for that is an exemption that quietly widens over time.
-    """
-    return "|".join("".join(part) for part in parts)
-
-
+# --- the rule table, written from the private one: do not edit by hand ---
+#
+# Written from the private shape table by a generator that also checks
+# every rule here compiles to exactly the private pattern for the same
+# id. Two hand-kept copies of one table drift; this one cannot.
+#
+# Some patterns are in pieces on purpose. This file is scanned by the
+# gate it implements, so a rule that looks for a word must not contain
+# that word: the pieces are joined by the language and not by the
+# scanner. Nothing here is an example of what it looks for.
 RULES: tuple[Rule, ...] = (
     _rule(
         "winpath.drive",
-        r"""(?<![A-Za-z0-9])[A-Za-z]:[\\/][A-Za-z0-9_.\-]{2,}""",
-        "an absolute path with a drive letter leaks a machine layout",
-        ["examples/*", "docs/gotchas/windows-shell.md"],
+        r'''(?<![A-Za-z0-9])[A-Za-z]:[\\/][A-Za-z0-9_.\-]{2,}|(?<![A-Za-z0-9])[A-Za-z]:\\(?=["'\s)\]]|$)''',
+        "a bare drive-letter root leaks the machine's layout",
+        ("examples/*", "docs/gotchas/windows-shell.md"),
     ),
     _rule(
-        "winpath.profile",
-        r"""(?i)[A-Za-z]:[\\/]+Users[\\/]+""",
-        "a profile path names the account it belongs to",
+        "winpath.userprofile",
+        r'''(?i)[A-Za-z]:[\\/]+Users[\\/]+''',
+        "a Windows user profile path names the account",
     ),
     _rule(
-        "path.extended",
-        r"""\\{2}\?\\""",
-        "an extended-length prefix only ever appears in a real local path",
+        "unc",
+        '''\\\\\\\\\\'''
+        '''?\\\\''',
+        "an extended-length UNC prefix only appears in real local paths",
     ),
     _rule(
-        "id.hex32",
-        r"""(?<![0-9a-fA-F])[0-9a-f]{32}(?![0-9a-fA-F])""",
-        "a 32-character hexadecimal run is an item id, a user id or a key",
+        "hex32",
+        r'''(?<![0-9a-fA-F])[0-9a-f]{32}(?![0-9a-fA-F])''',
+        "a 32-hex run is a Jellyfin id, a user id or an API key",
     ),
     _rule(
-        "id.guid",
-        r"""(?<![0-9a-fA-F])(?!00000000-0000-0000-0000-)"""
-        r"""[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}""",
-        "every identifier in an example is the all-zero fixture one",
+        "guid.nonfixture",
+        r'''(?<![0-9a-fA-F])(?!00000000-0000-0000-0000-)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}''',
+        "any GUID that is not one of the all-zero fixture ids",
     ),
     _rule(
         "secret.assignment",
-        r"""(?i)\b(api[_-]?key|apikey|token|secret|password|passwd)\b"""
-        r"""\s*[:=]\s*["']?[A-Za-z0-9/+_\-]{16,}""",
-        "a literal secret assignment, whatever the value happens to be",
+        r'''(?i)\b(api[_-]?key|apikey|token|secret|password|passwd)\b\s*[:=]\s*["']?[A-Za-z0-9/+_\-]{16,}''',
+        "a literal secret assignment, whatever the value is",
     ),
     _rule(
-        "contact.email",
-        r"""(?i)\b[A-Za-z0-9._%+\-]+@(?!example\.(?:com|org|net)\b)"""
-        r"""[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b""",
-        "an e-mail address other than an example one",
+        "email",
+        r'''(?i)\b[A-Za-z0-9._%+\-]+@(?!example\.(?:com|org|net)\b)[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b''',
+        "any e-mail address other than an example.com one",
     ),
     _rule(
-        "host.address",
-        r"""(?i)\b(?!127\.0\.0\.1\b)(?!0\.0\.0\.0\b)\d{1,3}(?:\.\d{1,3}){3}\b""",
-        "an address other than the loopback one",
-        ["docs/gotchas/*"],
+        "host",
+        r'''(?i)\b(?!127\.0\.0\.1\b)(?!0\.0\.0\.0\b)\d{1,3}(?:\.\d{1,3}){3}\b''',
+        "a bare IP address other than loopback",
+        ("docs/gotchas/*",),
     ),
     _rule(
         "release.resolution",
-        r"""(?i)\b\d{3,4}p\b[^\n]{0,80}\b(?:BluRay|BDRip|BRRip|WEB-?DL|WEBRip|HDTV|REMUX|HDRip)\b""",
-        "a release name is an inventory entry about somebody's collection",
+        r'''(?i)\b\d{3,4}p\b[^\n]{0,80}\b(?:BluRay|BDRip|BRRip|WEB-?DL|WEBRip|HDTV|REMUX|HDRip)\b''',
+        "a scene-release name is an inventory entry",
     ),
     _rule(
-        "release.codec",
-        r"""(?i)\b[A-Za-z0-9][A-Za-z0-9._]{4,}\.(?:19|20)\d{2}\."""
-        r"""[A-Za-z0-9._\-]*\b(?:x26[45]|h26[45]|"""
-        + _alternation(("HE", "VC"), ("DT", "S"), ("AA", "C"), ("AC", "3"))
-        + r""")\b""",
-        "a dotted release name with a codec token",
+        "release.group",
+        r'''(?i)\b[A-Za-z0-9][A-Za-z0-9._]{4,}\.(?:19|20)\d{2}\.[A-Za-z0-9._\-]*\b(?:x26[45]|h26[45]|HEVC|DTS|AAC|AC3|DDP?5)\b''',
+        "dotted release-name shape with a codec token",
     ),
     _rule(
-        "media.filename",
-        r"""(?i)\b[\w'\-]{2,}(?:[ .][\w'\-]+){0,8}\.(?:mkv|mp4|avi|m4v|vob|iso|ts)\b""",
+        "mediafile",
+        r'''(?i)\b[\w'\-]{2,}(?:[ .][\w'\-]+){0,8}\.(?:mkv|mp4|avi|m4v|vob|iso|ts)\b''',
         "a media filename outside the invented cast",
-        ["examples/*", "docs/*", "tests/*", "packages/*/tests/*"],
+        ("examples/*", "docs/*", "tests/*", "packages/*/tests/*"),
     ),
     _rule(
-        "shell.host",
-        r"(?i)\b(?:"
-        + _alternation(("robo", "copy"), ("MSYS", "_NO_PATHCONV"), ("sch", "tasks"))
-        + r"|net\s+sto" + "p" + r"|net\s+star" + "t"
-        + r")\b",
-        "host shell commands belong in an example, not in the library",
-        ["examples/*", "docs/gotchas/windows-shell.md", "docs/patterns/*"],
+        "windows.shell",
+        r'''(?i)\b(?:robo'''
+        r'''copy|MSYS_NO_'''
+        r'''PATHCONV|net\s+stop|net\s+start|sc\s+query|scht'''
+        r'''asks)\b''',
+        "host shell commands belong in examples, not the library",
+        ("examples/*", "docs/gotchas/windows-shell.md", "docs/patterns/detached-jobs.md"),
     ),
     _rule(
         "voice.firstperson",
-        r"(?i)\b(?:"
-        + _alternation(
-            ("my ", "library"), ("our ", "library"),
-            ("my ", "collection"), ("our ", "collection"),
-            ("the ", "fam", "ily"), ("house", "hold"),
-        )
-        + r")\b",
-        "a first-person reference to one particular setup",
+        r'''(?i)\b(?:hous'''
+        r'''ehold|my li'''
+        r'''brary|our l'''
+        r'''ibrary|the f'''
+        r'''amily)\b''',
+        "first-person references to one specific setup",
     ),
 )
+# --- end of the written rule table ---
 
 
 @dataclass(frozen=True)
