@@ -171,7 +171,7 @@ remove it. When you are confident -- a week later, after somebody has actually
 watched it -- that is a separate decision and a separate manifest:
 
 ```
-jfkit delete parked.tsv --release rebuild-donor --parked /srv/attic \
+jfkit delete parked.tsv --release rebuild-donor --parked /srv/parked \
     --audit work/deletions.log
 ```
 

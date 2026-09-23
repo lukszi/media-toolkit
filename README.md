@@ -159,8 +159,9 @@ discipline, the spoken-language settle ladder, aligning a dub to a different
 transfer, the swap procedure and evidence-first deletion, `docs/patterns/` on detached jobs and the device
 gate, `docs/runbooks/` on looking after the catalogue database, and two fully
 invented worked recipes under `examples/recipes/`. Every gotcha entry carries the symptom,
-the cause, the fix, how it was confirmed, and the version it was confirmed
-against; every method document names the function that implements each of its
+the cause and the fix; each reference states the versions its entries were
+confirmed against, and an entry that names how it was confirmed is one that
+was reproduced rather than met in passing; every method document names the function that implements each of its
 rules and ends with what is *not* implemented, or says in its first paragraph
 that it implements none.
 

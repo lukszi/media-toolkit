@@ -136,7 +136,7 @@ jfkit delete manifest.tsv \
 
 ```
 item_id	path	category	keeper	reason
-00000000-0000-0000-0000-000000000003	/srv/media/movies/Blue Canyon (2004)/donor.mkv	byte-identical-twin	/srv/media/movies/Blue Canyon (2004)/keeper.mkv	same bytes, two folders
+00000000-0000-0000-0000-000000000003	/srv/media/movies/Blue Canyon (1998)/donor.mkv	byte-identical-twin	/srv/media/movies/Blue Canyon (1998)/keeper.mkv	same bytes, two folders
 ```
 
 ## What is not implemented

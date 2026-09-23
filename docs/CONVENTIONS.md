@@ -3,14 +3,25 @@
 ## The invented cast
 
 Every example in every document, docstring, test, fixture, error string and
-commit message in this repository uses a name from this list. There are no
-exceptions, including harmless-looking ones: a real title in an example is an
-inventory entry about somebody's collection.
+commit message in this repository uses a name from this cast, or one built
+from the word lists below. There are no exceptions, including
+harmless-looking ones: a real title in an example is an inventory entry about
+somebody's collection.
 
 Films: `The Quiet Harbour (1978)`, `Blue Canyon (1998)`, `Winter Tide (2011)`,
 `Hollow Lantern (2004)`, `Golden Meridian (1987)`.
 
 Series: `Northwind`, `Harbour Lights`, `The Longest Night`, `Signal Hill`.
+The filename-parsing tables need more distinct series than a document wants to
+list, and use four more: `Hollowmere`, `Amberlight`, `Nightjar`, `Coldwater`.
+
+Tests that need dozens of distinct titles -- a survey with forty rows, a
+chapter list with sixteen names -- build them from two closed word lists
+rather than adding forty entries here. The first words are Quiet, Blue,
+Winter, Golden, Hollow and Falling; the second are Harbour, Canyon, Tide,
+Lantern, Meridian, Ledger, Aviary, Quarry, Pilgrim, Foundry, Anchor and
+Bastion. Any pairing of the two is part of the cast. Nothing outside this
+document and those two lists is a title anywhere in this repository.
 
 Release-shaped example filenames, one of a series and one of a film:
 `Northwind.S01E03.1080p.WEB-DL.x264-EXAMPLE.mkv` and
@@ -37,6 +48,16 @@ Paths: `/srv/media/movies`, `/srv/media/series`, `/srv/staging`,
 profile directory: `C:/Media/Movies` and `C:/Media/Series`.
 
 Identifiers: `00000000-0000-0000-0000-00000000000N`.
+
+## Example languages
+
+Where an example needs language codes they are `eng` and `deu`, and where an
+example drops tracks it drops `fra`, `ita` and `spa`. The set is fixed for the
+same reason the titles are: one registered choice, used identically
+everywhere, so that a reader cannot read anything into a variation. It is an
+illustration of a two-language policy and says nothing about any collection,
+or about what anybody speaks. Substitute your own in the configuration; the
+library has no built-in preference and ships no default list.
 
 ## Numbers
 

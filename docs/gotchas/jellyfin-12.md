@@ -1,14 +1,16 @@
 # Jellyfin 12.x: things that cost a day
 
-Every entry carries the **symptom**, the **cause**, the **fix**, **how it was
-confirmed**, and the version it was confirmed against. These are empirical
-findings about one release, not documentation, and they go stale. Where an
-entry is about a bug rather than a design decision, it says so.
+Every entry carries the **symptom**, the **cause** and the **fix**. These are
+empirical findings about one release, not documentation, and they go stale.
+Where an entry is about a bug rather than a design decision, it says so.
 
 **Confirmed against Jellyfin 12.1.0, September 2026**, on a single
-server with one administrative account. Nothing here was read from the
-source alone: each entry was reproduced against a running server, and the
-entries that were *not* reproduced say so.
+server with one administrative account. That version applies to every
+entry below. An entry carrying a **Confirmed** line was reproduced
+deliberately, and the line is the experiment; the shorter entries without one
+record a behaviour met in the course of the work and read from the
+implementation afterwards, which is weaker evidence and is why they are
+shorter.
 
 Every example uses an invented title, an invented path and the all-zero
 identifier shape (`00000000-0000-0000-0000-00000000000N`). `jfkit` implements

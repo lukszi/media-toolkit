@@ -1,8 +1,11 @@
 # Matroska and ffmpeg: things that cost a day
 
-Every entry carries the **symptom**, the **cause**, the **fix**, and **how it
-was confirmed**. These are empirical findings about particular versions of
-particular programs, not documentation, and they go stale.
+Every entry carries the **symptom**, the **cause** and the **fix**. An entry
+that also carries a **Confirmed** line was reproduced deliberately, and that
+line is the experiment; the shorter entries without one record a behaviour met
+in the course of the work, which is weaker evidence and is why they are
+shorter. These are empirical findings about particular versions of particular
+programs, not documentation, and they go stale.
 
 **Confirmed against MKVToolNix 84 and ffmpeg 7.1, September 2026**, over
 files of mixed provenance. Where a number is quoted it is an illustration of
