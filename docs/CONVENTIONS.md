@@ -12,8 +12,11 @@ Films: `The Quiet Harbour (1978)`, `Blue Canyon (1998)`, `Winter Tide (2011)`,
 
 Series: `Northwind`, `Harbour Lights`, `The Longest Night`, `Signal Hill`.
 
-Release-shaped example filename:
-`Northwind.S01E03.1080p.WEB-DL.x264-EXAMPLE.mkv`.
+Release-shaped example filenames, one of a series and one of a film:
+`Northwind.S01E03.1080p.WEB-DL.x264-EXAMPLE.mkv` and
+`The.Quiet.Harbour.1978.1080p.BluRay.x264-SAMPLE.mkv`. The second exists so
+that a worked example can show what a container's own embedded title looks
+like when a library is configured to believe it.
 
 Example filenames used in docstrings and documents, and nowhere else:
 `Northwind - S01E03 - The Quiet Harbour.mkv`,
