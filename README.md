@@ -80,6 +80,34 @@ singleton, nothing that hands a caller a token by being imported.
 
 Validation reports *every* problem in one message, not the first one it hits.
 
+## What is in the first release
+
+`mkvkit` 0.1.0 and `jfkit` 0.1.0. `dubalign` is not released: it is a set of
+skeletons and its version says so.
+
+Two things work end to end, and both of them read rather than write:
+
+**Identify the spoken language of the audio tracks in a library.**
+`mkvkit langid jobs` lists the tracks, `scan` reads them and records what a
+detector heard per window, and `report` decides and says what is left. The
+deciding is pure arithmetic over stored probability vectors, so it can be
+re-run against evidence collected months ago when a threshold changes -- and
+it runs with nothing installed.
+
+**Predict how a media server will read a filename, before renaming.**
+`jfkit naming PATH...` prints what each name would be read as and exits
+non-zero if any of them would be read as an episode *range*, which is the
+expensive mistake. It is pinned by a table of sixty-five invented names and it
+records the release it was checked against.
+
+Beside them, two references that stand on their own: `docs/gotchas/` on one
+media server release and on Matroska and ffmpeg. Every entry carries the
+symptom, the cause, the fix, how it was confirmed, and the version it was
+confirmed against.
+
+Everything else in the tree is a documented skeleton that raises rather than
+guesses. Each package's `CHANGELOG.md` says which is which.
+
 ## Safety principles
 
 These four are the reason the project exists in this shape.

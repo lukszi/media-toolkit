@@ -24,7 +24,7 @@ classifiers = [
 # mkvkit carries the config model, the tool discovery and the logging setup
 # that both packages load. It is standard library only itself, so this costs a
 # caller nothing, and it survives a later split as an ordinary dependency.
-dependencies = ["mkvkit>=0.0.1"]
+dependencies = ["mkvkit>=0.1.0"]
 
 [project.scripts]
 jfkit = "jfkit.cli:main"
