@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  deny-scan:
+    # The privacy gate runs first and alone: if it fails, nothing else matters.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deny scan (tree, diff and commit messages)
+        run: python tests/deny_scan.py --tree . --diff --messages
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  test:
+    needs: [deny-scan]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: install
+        run: |
+          python -m pip install -U pip
+          pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
+          pip install pytest ruff mypy
+      - name: lint
+        run: ruff check .
+      - name: types
+        run: mypy packages
+      - name: tests without external tools
+        run: pytest -m "not needs_ffmpeg and not needs_mkvtoolnix and not needs_asr"
