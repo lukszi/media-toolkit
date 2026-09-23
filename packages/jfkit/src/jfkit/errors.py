@@ -1,24 +1,46 @@
-"""jfkit.errors -- the error types, so callers can act on them.
+"""jfkit.errors -- the error types, so a caller can act on them.
 
-A missing optional dependency raises an error naming the exact install line.
-A missing external program raises one naming every location that was tried.
+The shared ones come from the file-side package: a missing program names every
+location that was tried, a missing optional dependency names the exact install
+line, and a bad configuration names every problem at once.
 
-Planned public API:
-    ToolNotFound
-    ExtraRequired
-    ServerRefused
-    ItemNotFound
-
-Status: skeleton. The behaviour lands in a later milestone; this file exists
-so the history shows when the work it comes from was actually done.
+The server-side ones are here. They carry the status and the item, because
+"the server said no" without either is what turns a two-minute fix into an
+afternoon.
 """
-
-from __future__ import annotations
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
 
-__all__: list[str] = []
+from __future__ import annotations
+
+from mkvkit.errors import ConfigError, ExtraRequired, SecretUnavailable, ToolNotFound
+
+__all__ = [
+    "ConfigError",
+    "ExtraRequired",
+    "ItemNotFound",
+    "SecretUnavailable",
+    "ServerRefused",
+    "ToolNotFound",
+]
 
 
-def _not_yet(name: str) -> None:
-    raise NotImplementedError(f"{name}: skeleton only, see the module docstring")
+class ServerRefused(RuntimeError):
+    """The server answered, and the answer was no."""
+
+    def __init__(self, status: int, route: str, detail: str = "") -> None:
+        self.status = status
+        self.route = route
+        self.detail = detail
+        suffix = f": {detail}" if detail else ""
+        super().__init__(f"{status} from {route}{suffix}")
+
+
+class ItemNotFound(LookupError):
+    """No item with that identifier, in that scope."""
+
+    def __init__(self, item_id: str, scope: str = "") -> None:
+        self.item_id = item_id
+        self.scope = scope
+        where = f" for {scope}" if scope else ""
+        super().__init__(f"no item {item_id}{where}")

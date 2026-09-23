@@ -1,41 +1,71 @@
-# Every path, id, drive and token in these tools comes from one file like this.
-# Resolution order:
-#   --config PATH -> $MEDIATOOLKIT_CONFIG -> ./mediatoolkit.toml -> per-user
-# Nothing below points anywhere real: these are invented example values.
+# Every path, identifier, program location and token these tools use comes
+# from one file like this one.
+#
+#   --config PATH  ->  $MEDIATOOLKIT_CONFIG  ->  ./mediatoolkit.toml  ->  per-user
+#
+# The per-user location is the roaming application-data directory on Windows
+# and $XDG_CONFIG_HOME (or ~/.config) elsewhere, under media-toolkit/config.toml.
+#
+# Nothing below points anywhere real: these are invented example values, and
+# this file is loaded by the test suite to prove it still validates.
+#
+# Every section and every key is optional. What is missing takes the default
+# shown in the comment beside it, and every problem in the file is reported in
+# one message rather than one traceback at a time.
 
 [server]
 url = "http://127.0.0.1:8096"
-# The token itself is NEVER in this file. Name the variable that holds it:
+
+# The token is NEVER a value in this file. Name the variable that holds it...
 token_env = "JFKIT_TOKEN"
-# ...or a command that prints it:
+# ...or a command that prints it on its first line:
 # token_command = "pass show media/server"
+#
+# Writing the secret itself into this file is refused at load time, under any
+# of the obvious key names. That is deliberate: a secret that reached a file
+# once will reach a backup, a paste and a screenshot too.
+
+# The account whose view of the library is used. Item queries are scoped to a
+# user by default: an unscoped listing silently omits items.
 user_id = "00000000-0000-0000-0000-000000000000"
+
+# Where the server keeps its own data, for the read-only upkeep commands.
 data_dir = "/var/lib/jellyfin"
 
 [tools]
+# A name resolved on the PATH, or an absolute path. Anything left out is
+# discovered: PATH first, then the usual install locations for the platform.
+# The environment overrides this file: MKVKIT_FFMPEG, MKVKIT_MKVMERGE, and so
+# on.
 ffmpeg = "ffmpeg"
 ffprobe = "ffprobe"
 mkvmerge = "mkvmerge"
 mkvpropedit = "mkvpropedit"
+mkvextract = "mkvextract"
 
 [paths]
 movies = "/srv/media/movies"
 series = "/srv/media/series"
-staging = "/srv/staging"
-parked = "/srv/parked"
-work = "./work"
+staging = "/srv/staging"     # where a rebuild is assembled before it is swapped in
+parked = "/srv/parked"       # where a replaced original is moved, and stays
+work = "./work"              # logs, caches, evidence
 
 [policy]
-keep_languages = ["eng", "deu"]
-droppable_languages = []
+keep_languages = ["eng", "deu"]   # never dropped from a rebuild
+droppable_languages = []          # opt-in, and empty by default
 default_audio = "eng"
 
 [langid]
 model = "large-v3"
-device = "auto"
+device = "auto"                   # auto, cpu or cuda
+
+# The settle bar. These two were fitted against one collection and are
+# defaults, not universals; the method document explains how to re-fit them.
+# Overturning an existing tag is held to a higher bar than confirming one, so
+# override_conf may not be below min_conf.
 min_conf = 0.92
 override_conf = 0.97
 
 [jobs]
-device_gate = true
+device_gate = true                # one heavy reader per storage device at a time
 max_readers_per_device = 1
