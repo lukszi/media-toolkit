@@ -44,8 +44,19 @@ ignore = [
 python_version = "3.11"
 strict = true
 files = ["packages"]
+# A third-party library that ships no type information is a fact about that
+# library, not a looser standard for this tree: nothing our own code declares
+# is weakened by it, and the one place a stub-less library is called is wrapped
+# in an annotated function of our own.
+disable_error_code = ["import-untyped"]
 mypy_path = [
   "packages/mkvkit/src",
   "packages/jfkit/src",
   "packages/dubalign/src",
 ]
+
+# The optional numerical extra is not installed everywhere this runs, and the
+# module that uses it has a path that does not need it.
+[[tool.mypy.overrides]]
+module = ["scipy.*"]
+ignore_missing_imports = true
