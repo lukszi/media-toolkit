@@ -161,7 +161,8 @@ gate, `docs/runbooks/` on looking after the catalogue database, and two fully
 invented worked recipes under `examples/recipes/`. Every gotcha entry carries the symptom,
 the cause, the fix, how it was confirmed, and the version it was confirmed
 against; every method document names the function that implements each of its
-rules and ends with what is *not* implemented.
+rules and ends with what is *not* implemented, or says in its first paragraph
+that it implements none.
 
 **And one document about running the work rather than about using a tool.**
 `docs/operating-playbook.md` is how a long cleanup is run safely when
@@ -175,6 +176,14 @@ device; detached, resumable jobs; one kept log per pass; what a person decides
 and what automation decides; and how to hand the job to a reader with no
 context. It is written for operators rather than for developers, and none of
 it needs this repository installed.
+
+Beside it, `docs/methods/handoff-audit.md`: how to find out whether that state
+document is still true. Independent readers are pointed at the running system
+and told to *refute* its claims rather than to review them, contested claims
+are arbitrated and judged on a rubric of three verdicts and three severities,
+and every one of them leaves with a corrected sentence. It is the only method
+document here with no implementing function, and it says so in its first
+paragraph.
 
 **Nothing in the tree is a skeleton any more.** Every module that was one at
 the first release of either package is implemented, tested and documented at
