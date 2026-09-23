@@ -6,7 +6,7 @@ repository.
 | Package | Install | What it does |
 |---|---|---|
 | `mkvkit` | `pip install mkvkit` | the file side: safe header edits, original-vs-rebuilt verification, chapters, Matroska tags, container probing, spoken-language identification |
-| `jfkit` | `pip install jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, evidence-first deletion |
+| `jfkit` | `pip install jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, segment scoping, detached jobs |
 | `dubalign` | `pip install dubalign` | aligning a foreign-language dub to a different transfer of the same title: decode, measure, find the seams, splice, verify |
 
 `mkvkit` and `dubalign` are useful with no media server at all. `jfkit` talks
@@ -82,7 +82,7 @@ Validation reports *every* problem in one message, not the first one it hits.
 
 ## What is released
 
-`mkvkit` 0.2.0, `jfkit` 0.1.0 and `dubalign` 0.1.0.
+`mkvkit` 0.2.0, `jfkit` 0.3.0 and `dubalign` 0.1.0.
 
 **Edit a Matroska file, and prove you changed only what you meant to.**
 `mkvkit probe` says what is in a file, from both programs that can describe
@@ -120,6 +120,23 @@ scans the whole result against the keeper and holds every window to 40 ms --
 every window, not the average. `dubalign controls` runs four questions whose
 answers were written down first, and nothing else is believed until it passes.
 
+**Administer a media server without emptying the fields you did not
+mention.** `jfkit survey` answers six questions about a collection --
+completeness, audio languages per track, chapter state, containers,
+duplicates, filename parsing -- in one shape, in five formats, with the scope
+and the caveats inside the document. `jfkit item set` round-trips a whole
+record and writes the phases in the one order that survives a refresh.
+`jfkit refresh` asks for a non-replacing refresh, waits for the queue rather
+than reading once and believing it, and reports everything that moved outside
+what was expected. `jfkit swap` puts a rebuilt file in an item's exact path so
+its identity, its play state and its name survive, with the service stopped
+per chunk and the chunks sized in bytes. `jfkit delete` refuses to touch
+anything whose category nobody released, checks every precondition against the
+world rather than against the manifest, and parks rather than deletes.
+`jfkit libopts`, `jfkit maintenance`, `jfkit segments` and `jfkit jobs` cover
+library options, the catalogue database, scoping a segment pass, and not
+putting two heavy readers on one disk.
+
 **Predict how a media server will read a filename, before renaming.**
 `jfkit naming PATH...` prints what each name would be read as and exits
 non-zero if any of them would be read as an episode *range*, which is the
@@ -127,17 +144,22 @@ expensive mistake. It is pinned by a table of sixty-five invented names and it
 records the release it was checked against.
 
 Beside them, references that stand on their own: `docs/gotchas/` on one media
-server release and on Matroska and ffmpeg, a guide to the file side in
-`docs/mkvkit.md`, and `docs/methods/` on the verification discipline and on
-aligning a dub to a different transfer. Every gotcha entry carries the symptom,
+server release and on Matroska and ffmpeg, guides to each side in
+`docs/mkvkit.md` and `docs/jfkit.md`, `docs/methods/` on the verification
+discipline, aligning a dub to a different transfer, the swap procedure and
+evidence-first deletion, `docs/patterns/` on detached jobs and the device
+gate, `docs/runbooks/` on looking after the catalogue database, and two fully
+invented worked recipes under `examples/recipes/`. Every gotcha entry carries the symptom,
 the cause, the fix, how it was confirmed, and the version it was confirmed
 against; every method document names the function that implements each of its
 rules and ends with what is *not* implemented.
 
 What is left in the tree is a documented skeleton that raises rather than
 guesses -- the half of chapter-name verification that needs the content rather
-than the arithmetic, and the planner that works over a whole collection. Each
-package's `CHANGELOG.md` says which is which.
+than the arithmetic, and the planner that works over a whole collection. The
+server side no longer has any: every module that was a skeleton at `jfkit`
+0.1.0 is implemented at 0.3.0. Each package's `CHANGELOG.md` says which is
+which.
 
 ## Safety principles
 

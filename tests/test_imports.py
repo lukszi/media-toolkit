@@ -41,7 +41,7 @@ def test_module_imports(name: str) -> None:
 #: What each package claims to be. A released package and one that is still a
 #: set of skeletons must not report the same thing, so the expectation is
 #: written down here rather than inferred.
-VERSIONS = {"mkvkit": "0.2.0", "jfkit": "0.1.0", "dubalign": "0.1.0"}
+VERSIONS = {"mkvkit": "0.2.0", "jfkit": "0.3.0", "dubalign": "0.1.0"}
 
 
 def test_every_package_reports_the_version_it_should() -> None:
