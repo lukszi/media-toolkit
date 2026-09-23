@@ -29,3 +29,19 @@ the material the tools were used on -- no counts of films, episodes, files or
 marks, no sizes, no timings of a particular run. Where a constant was fitted
 rather than derived, the document says so and explains how to re-fit it on
 your own material.
+
+## Fixture names
+
+The generated media fixtures are part of the same cast and are listed here
+for the same reason: the privacy gate reads this document, and these are the
+only media filenames that may appear anywhere in the repository.
+
+`tiny_multitrack.mkv`, `tiny_multitrack.mp4`, `not_really_mkv.mkv`,
+`offset_pair.mka`, `chapter_grid.mkv`, `chapter_grid_pal.mkv`, `cueless.mkv`,
+`sample_cues.srt`.
+
+None of them is committed. They are built from test patterns and tones by
+`python -m tests.fixtures build`, and each one exists to make a single known
+answer checkable -- a language tag that contradicts a header, a container that
+is not what its extension claims, a delay the measurement has to recover, a
+grid of marks at times the code has to reproduce.
