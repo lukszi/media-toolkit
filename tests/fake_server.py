@@ -17,7 +17,9 @@ precisely because they are the ones that mislead:
   options of nothing when the stored paths do not match, which is what a
   moved data directory looks like from the outside;
 * a scheduled-task list, so a maintenance pass can be made to refuse while
-  the server is busy.
+  the server is busy, and the two routes that start and stop one;
+* a plugin list and one plugin's configuration, so scoping a pass can be
+  tested without any plugin being installed anywhere.
 
 Every identifier here is the all-zero fixture shape and every title is from
 the invented cast.
@@ -134,6 +136,14 @@ class Recorder:
     items: list[dict[str, Any]] = field(default_factory=lambda: copy.deepcopy(ITEMS))
     #: play state per user, over and above what each record carries
     user_data: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    #: what the plugin list answers with, and each plugin's configuration
+    installed_plugins: list[dict[str, Any]] = field(default_factory=list)
+    plugin_configuration: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: item id -> the marked stretches the server holds for it
+    media_segments: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: task ids that were started and cancelled, in order
+    tasks_started: list[str] = field(default_factory=list)
+    tasks_cancelled: list[str] = field(default_factory=list)
     #: what the scheduled-task routes answer with
     scheduled_tasks: list[dict[str, Any]] = field(default_factory=list)
     #: what the list-of-libraries route answers with
@@ -190,6 +200,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "no token"})
             return
 
+        if route == "/Plugins":
+            self._send(200, self.recorder.installed_plugins)
+            return
+        if route.startswith("/Plugins/") and route.endswith("/Configuration"):
+            plugin_id = route.split("/")[2]
+            self._send(200, self.recorder.plugin_configuration.get(plugin_id, {}))
+            return
+        if route.startswith("/MediaSegments/"):
+            item_id = route.rsplit("/", 1)[-1]
+            self._send(200, {"Items": self.recorder.media_segments.get(item_id, [])})
+            return
         if route == "/ScheduledTasks":
             self._send(200, self.recorder.scheduled_tasks)
             return
@@ -236,6 +257,15 @@ class _Handler(BaseHTTPRequestHandler):
             self.recorder.refreshed.append(item_id)
             self._send(204)
             return
+        if route.startswith("/ScheduledTasks/Running/"):
+            self.recorder.tasks_started.append(route.rsplit("/", 1)[-1])
+            self._send(204)
+            return
+        if route.startswith("/Plugins/") and route.endswith("/Configuration"):
+            plugin_id = route.split("/")[2]
+            self.recorder.plugin_configuration[plugin_id] = dict(body or {})
+            self._send(204)
+            return
         if route == "/Library/VirtualFolders/LibraryOptions":
             self._write_library_options(body or {})
             return
@@ -266,6 +296,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.recorder.requests.append(("DELETE", route))
         if not self._authorised():
             self._send(401, {"error": "no token"})
+            return
+        if route.startswith("/ScheduledTasks/Running/"):
+            self.recorder.tasks_cancelled.append(route.rsplit("/", 1)[-1])
+            self._send(204)
             return
         if route.startswith("/Items/"):
             item_id = route.rsplit("/", 1)[-1]
