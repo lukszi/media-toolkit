@@ -163,6 +163,19 @@ the cause, the fix, how it was confirmed, and the version it was confirmed
 against; every method document names the function that implements each of its
 rules and ends with what is *not* implemented.
 
+**And one document about running the work rather than about using a tool.**
+`docs/operating-playbook.md` is how a long cleanup is run safely when
+most of the mechanical labour is handed to automation: one document that *is*
+the state, and the discipline of refreshing it; a numbered ledger of
+everything that surprised you, each entry pinned to a version; releasing a
+whole category before anything in it may be touched; the dry run as a plan you
+review and diff; staging elsewhere and swapping in place so identifiers
+survive; verifying both sides inside the final container; one heavy reader per
+device; detached, resumable jobs; one kept log per pass; what a person decides
+and what automation decides; and how to hand the job to a reader with no
+context. It is written for operators rather than for developers, and none of
+it needs this repository installed.
+
 **Nothing in the tree is a skeleton any more.** Every module that was one at
 the first release of either package is implemented, tested and documented at
 `jfkit` 0.3.0 and `mkvkit` 0.3.0. Each package's `CHANGELOG.md` says what
