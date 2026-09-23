@@ -617,6 +617,109 @@ a sequential pass. On a real set, most lists came out aligned and a
 meaningful minority came out uncertain or misaligned -- which is the argument
 for checking at all.
 
+The full write-up, with what to do about it, is
+`docs/methods/chapter-names.md`; `mkvkit.chapters.verify` implements it.
+
+### 6.7 A list of labels counted as a list of names
+
+**Symptom.** Several titles came out of a naming pass carrying chapter names
+reading `Chapter One` through `Chapter Nine`, the same label in another
+language followed by a number, and in one case a list of raw timecodes. Each is *worse* than
+having no names, because a player generates its own label for an unnamed mark
+and now displays these instead.
+
+**Cause.** The counter that decided whether a candidate "has names" tested
+whether the string was non-empty. Every one of those entries is non-empty.
+
+**Fix.** Count with a predicate that knows what a label looks like:
+empty, a bare number, a bare upper-case roman numeral, a timecode, or the
+word for a chapter in any language followed by a number -- spelled out as well
+as in digits. `mkvkit.chapters.xml.is_generic_name()` is that predicate and
+`chapters.sources.named_fraction()` is the count; a candidate under half real
+names is a times-only list and is parked rather than written.
+
+**Confirmed** by reading the written files back after the pass, MKVToolNix
+97, September 2026. The word list grows whenever a published list turns up
+spelling it another way, which is the honest state of that kind of check.
+
+### 6.8 The entry may be a different film's list
+
+**Symptom.** A long candidate list matched the marks, and none of the
+names had anything to do with the film.
+
+**Cause.** The list was character-for-character identical -- including a
+spelling mistake -- to the list published for a different film in the same
+series. Somebody had copied the wrong entry years earlier. The marks agreeing
+was a coincidence of two films with similar act structure and the same running
+time.
+
+**Fix.** Compare a candidate against every other candidate you hold. A second
+entry whose grid *also* matches and whose names are in the same order is
+independent corroboration; an entry whose names are identical but whose marks
+are **not** yours is proof the list belongs somewhere else.
+`mkvkit.chapters.verify.corroborate()` reports both.
+
+**Confirmed** by inspection of the two cached entries, September 2026. Among
+titles that had a second matching entry, an identical name order was not
+rare.
+
+### 6.9 A flat character cap elides the middle of a long chapter
+
+**Symptom.** A long chapter was named from its opening minutes and its
+closing lines. The sequence the chapter is actually about was not
+in the material the name was written from.
+
+**Cause.** The window builder capped each chapter at a fixed number of
+characters by keeping the head and the tail and eliding the middle. On a short
+chapter that is invisible; on a long one it removes the chapter.
+
+**Fix.** Size the budget by the chapter's own duration, and when text has to
+go, drop it **evenly across the whole span** -- cut the chapter into slots,
+take the same share from each, mark each elision. `chapters.windows.budget_for()`
+and `build_windows()`. Everything over about ten minutes is at risk under a
+flat cap.
+
+**Confirmed** by re-reading the same chapter at a larger budget: the right name
+was then obvious. September 2026.
+
+### 6.10 A speech model's segments are far longer than a chapter boundary
+
+**Symptom.** Dialogue from the start of one chapter kept turning up in the
+evidence for the chapter before it, blunting every alignment score computed
+from it.
+
+**Cause.** A batched transcriber returns twenty or thirty seconds as a single
+segment with one start time, and a segment straddling a mark was attributed
+whole to the side it started on. Neither a voice-activity setting nor a chunk
+length shortens those segments -- several attempts were spent finding that out.
+
+**Fix.** Ask for word timestamps and re-cut the words into short cues
+(`chapters.transcripts.cues_from_words()`), then split any remaining cue at the
+mark it crosses, spreading its words across its own span in proportion to time
+(`clip()` and `trim_to_marks()`). A cue that overlaps at all still contributes
+at least one word, so a mark landing mid-sentence never silently empties a
+window.
+
+**Confirmed** against a batched speech model, September 2026; the re-cut ran
+several times faster than real time on one consumer graphics card and
+never touched the disk the media was on.
+
+### 6.11 A shift score at the edge of its range is computed on almost nothing
+
+**Symptom.** On a six-mark list, the offset −4 scored a perfect 1.0 and won,
+because it had exactly two names left inside the list and both matched.
+
+**Cause.** Sliding a list of *n* names by *k* leaves *n − |k|* pairs to score.
+At the extremes of a ±4 range that is very few, and a small sample scores
+extreme values easily.
+
+**Fix.** Do not score an offset that cannot be scored on enough of the list:
+at least three pairs, and at least half the names that can be scored anywhere.
+`chapters.verify.shift_score()`'s `min_pairs` and `min_share`. A short list
+simply has fewer usable offsets, which is the truth about it.
+
+**Confirmed** while packaging, on a constructed six-mark case, September 2026.
+
 ---
 
 ## 7. One reader per disk

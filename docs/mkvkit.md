@@ -28,6 +28,8 @@ The commands are in the order a job uses them.
 ```
 mkvkit probe    FILE...                       what is in it
 mkvkit chapters show|check|rollback|apply     the marks, and the document
+mkvkit chapters classify|match|windows        somebody else's names: which job,
+mkvkit chapters selfcheck|plan                whether they fit, and what changes
 mkvkit tags     show                          the tags, and what they overrule
 mkvkit propedit FILE --track UID ...          change a header in place
 mkvkit remux    FILE --staging DIR            rebuild it without some tracks
@@ -122,7 +124,75 @@ file that has none only if no rate conversion was needed (`adopt`), because
 the grid agreement was the only evidence that it is the same cut.
 
 A matching grid proves the marks fit. It says nothing about whether the names
-were typed against them.
+were typed against them -- which is the next section.
+
+## `mkvkit.chapters` -- somebody else's names, and your own
+
+A published chapter list raises one question the arithmetic cannot answer, and
+it turns out to matter: a grid can match to under two seconds while half of
+the names describe a scene a couple of chapters away. The method document is `docs/methods/chapter-names.md`; this is the
+shape of it in code.
+
+```python
+from mkvkit.chapters import names, sources, verify
+
+job = sources.classify(marks, candidate, runtime_s=5400.0)
+print(job)                       # "names-only: the grids agree ..."
+
+evidence = verify.collect_evidence(path, marks, provider=provider)
+result = names.match_names(marks, candidate, evidence=evidence)
+if result.accepted:
+    document = result.chapters   # the file's own marks, carrying the names
+```
+
+`sources` names the three jobs a candidate can be, and they carry very
+different risk: **names onto marks you already have** (safe -- the worst case
+is a wrong name on a mark that has not moved), **times and names onto a file
+with none** (only a runtime stands behind it, so it asks for a person), and
+**times only** (parked). It also carries one worked adapter for an archive of
+the kind that exists: a search returning several candidates per title and a
+document per candidate, with the fetching injected so a test passes a
+dictionary. It is **disabled unless you enable it**, cached on disk,
+rate-limited and identified.
+
+`verify` is the half that needs the content. Twenty seconds of
+original-language audio from each mark and one frame shortly after it, both
+out of a *single* seek; the content-word hit rate of the name list scored at
+offsets −4 to +4, where a clearly better score away from zero is a list that
+was typed against different marks; and corroboration from any second published
+list you hold. Only an `ALIGNED` verdict is eligible to be written, and a list
+that fits better elsewhere is **refused rather than slid into place**.
+
+`names` holds the matcher and the rules -- length, punctuation, chapter
+numbers, timecodes, language, and the mechanical answer for a chapter with no
+dialogue, which is the structural name where one belongs and the empty string
+everywhere else. `windows` cuts a transcript into one window per mark, sized
+by the chapter's duration and sampled evenly across it. `selfcheck` grades
+names that were written rather than sourced, and one `wrong` grade holds the
+whole film back.
+
+There is **no namer** here and there is not going to be one: the writing step
+in the work this came from was a person reading the windows. What ships is the
+window builder, the rules, the self-check and the verifier.
+
+## `mkvkit.plan` -- one file, everything that would change
+
+```python
+from mkvkit import plan
+
+job = plan.chapter_names_plan(path, result, source="an example chapter archive")
+print(job)                                  # this is what --dry-run prints
+outcome = plan.apply(job, dry_run=False)    # chapters and tags in one invocation
+```
+
+Three properties earn it an object. Every pending change to a file goes in
+**one** invocation, because two edits are two modification times and a media
+server regenerates an item's preview tiles and chapter images on each one. A
+**refusal is part of the plan**, carrying its reason, rather than an exception
+that ends a pass. And `explain_churn()` compares two runs of the same pass and
+says which files entered, which left and which changed -- without which there
+is no way to tell a policy change from a bug, because both look like a
+different list.
 
 ## `mkvkit.tags` -- the element that overrules the header
 
@@ -276,5 +346,6 @@ chosen the wrong default.
 - **A confidently wrong value is worse than no value.** Where the evidence
   does not settle, these tools do nothing and say so.
 
-See `docs/methods/verification-discipline.md` for the reasoning, and
+See `docs/methods/verification-discipline.md` for the reasoning,
+`docs/methods/chapter-names.md` for the chapter-name method in full, and
 `docs/gotchas/matroska-ffmpeg.md` for the findings each rule came from.
