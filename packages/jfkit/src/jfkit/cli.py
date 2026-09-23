@@ -5,9 +5,9 @@ script that drives both learns one set: a configuration file, verbosity, a log
 file, machine-readable logging, and --dry-run against --apply on everything
 that writes.
 
-One sub-command so far, and it is a read-only one: ``naming`` predicts how a
-media server will read a filename, which is the cheapest thing in this
-repository to run and the one worth running before a rename rather than after.
+Eleven sub-commands. Three of them read and nothing else -- predicting how a
+filename will be read, surveying what is in the library, and asking which
+device backs a path -- and they are the ones worth running first.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
@@ -22,6 +22,7 @@ from pathlib import Path
 from mkvkit.cli import SubCommand, add_common_arguments, run
 
 from . import __version__
+from .commands import REGISTRARS
 from .config import Config
 from .naming import PARSED_AGAINST, VIDEO_SUFFIXES, Rule, parse
 
@@ -34,6 +35,8 @@ REGISTRY: dict[str, SubCommand] = {}
 
 def _register_own() -> None:
     REGISTRY.setdefault("naming", _register_naming)
+    for name, register in REGISTRARS.items():
+        REGISTRY.setdefault(name, register)
 
 
 def _register_naming(
