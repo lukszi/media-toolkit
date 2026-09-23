@@ -15,7 +15,9 @@ precisely because they are the ones that mislead:
   against;
 * a list-of-libraries route that answers with an identifier of nothing and
   options of nothing when the stored paths do not match, which is what a
-  moved data directory looks like from the outside.
+  moved data directory looks like from the outside;
+* a scheduled-task list, so a maintenance pass can be made to refuse while
+  the server is busy.
 
 Every identifier here is the all-zero fixture shape and every title is from
 the invented cast.
@@ -132,6 +134,8 @@ class Recorder:
     items: list[dict[str, Any]] = field(default_factory=lambda: copy.deepcopy(ITEMS))
     #: play state per user, over and above what each record carries
     user_data: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    #: what the scheduled-task routes answer with
+    scheduled_tasks: list[dict[str, Any]] = field(default_factory=list)
     #: what the list-of-libraries route answers with
     virtual_folders: list[dict[str, Any]] = field(default_factory=list)
     #: library id -> where its options document lives, so a write can land
@@ -186,6 +190,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "no token"})
             return
 
+        if route == "/ScheduledTasks":
+            self._send(200, self.recorder.scheduled_tasks)
+            return
         if route == "/Library/VirtualFolders":
             self._send(200, self.recorder.virtual_folders)
             return
