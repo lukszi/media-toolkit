@@ -40,6 +40,7 @@ from typing import Final
 __all__ = [
     "NO_CONTENT",
     "UNKNOWN_TAGS",
+    "bibliographic",
     "canonical",
     "is_unknown",
     "iso1_to_iso2t",
@@ -120,6 +121,9 @@ UNKNOWN_TAGS: Final[frozenset[str]] = frozenset({"", "und", "mis", "mul", "unk",
 #: "There is no spoken language here" -- an answer, and a writable tag.
 NO_CONTENT: Final[str] = "zxx"
 
+#: The inverse of the table above, for the formats that want the other spelling.
+_ISO2T_TO_B: Final[dict[str, str]] = {t: b for b, t in _ISO2B_TO_T.items()}
+
 iso1_to_iso2t = MappingProxyType(_ISO1_TO_ISO2T)
 
 
@@ -144,6 +148,24 @@ def canonical(code: str | None) -> str | None:
         base = _ISO1_TO_ISO2T.get(base, base)
     base = _ISO2B_TO_T.get(base, base)
     return _COLLAPSE.get(base, base)
+
+
+def bibliographic(code: str | None) -> str:
+    """The other ISO 639-2 spelling, for the elements that insist on it.
+
+    Two spellings exist for about twenty languages, and which one a format
+    wants is not a matter of taste: a chapter element wants the bibliographic
+    code, a track header is written with either and read as both. Everything
+    inside this package uses the terminological code and converts here, at the
+    boundary, so exactly one line of code knows about the difference.
+
+    An unknown or empty value becomes ``und``, which is the honest answer and
+    a writable one.
+    """
+    base = canonical(code)
+    if base is None:
+        return "und"
+    return _ISO2T_TO_B.get(base, base)
 
 
 def is_unknown(code: str | None) -> bool:
