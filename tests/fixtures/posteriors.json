@@ -1,4 +1,287 @@
 {
-  "_comment": "Hand-written probability vectors. No audio, no model, no GPU.",
-  "cases": []
+  "_comment": [
+    "Hand-written probability vectors. No audio, no model, no GPU, no library.",
+    "",
+    "Each case is a set of per-window language probabilities and the verdict the",
+    "settle rules must reach from them. The whole ladder is decidable from this",
+    "file, which is the point: the part most likely to be subtly wrong is the",
+    "part that needs no media to test, and a threshold that can only be checked",
+    "by another pass over terabytes never gets checked.",
+    "",
+    "'tag' is what the file already claims. 'speech_total_s' is present only",
+    "where the no-speech rule is under test. 'prior' and 'support' describe the",
+    "context and the corroboration the later stages would have produced."
+  ],
+  "cases": [
+    {
+      "name": "a unanimous run confirms the tag that is already there",
+      "why": "Rule A: confirming is cheap and writes nothing, so one agreeing window is enough.",
+      "tag": "eng",
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.97, "deu": 0.03},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02}
+      ],
+      "expect": {"verdict": "confirm", "language": "eng", "rule": "A.tag-confirm"}
+    },
+    {
+      "name": "a weak run still confirms an existing tag it agrees with",
+      "why": "The evidence is thin, but it points the same way as the tag and nothing is written.",
+      "tag": "deu",
+      "runtime_s": 2700,
+      "windows": [
+        {"deu": 0.60, "eng": 0.40},
+        {"eng": 0.55, "deu": 0.45}
+      ],
+      "expect": {"verdict": "confirm", "language": "deu", "rule": "A.tag-confirm"}
+    },
+    {
+      "name": "an untagged track settles on strong agreement",
+      "why": "The standard bar: enough counted windows, confident, clear of the runner-up, agreed.",
+      "tag": null,
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.97, "deu": 0.03},
+        {"eng": 0.99, "deu": 0.01}
+      ],
+      "expect": {"verdict": "settle", "language": "eng", "rule": "audio.standard"}
+    },
+    {
+      "name": "three confident windows are not enough on a long item",
+      "why": "A feature-length item can supply five; accepting three would be accepting less evidence than was available.",
+      "tag": null,
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02}
+      ],
+      "expect": {"verdict": "unsettled", "reasons": ["fewwindows"]}
+    },
+    {
+      "name": "an item too short for five windows settles on three unanimous ones",
+      "why": "Demanding five windows from a sixty-second clip is demanding the impossible; the bar rises instead.",
+      "tag": null,
+      "runtime_s": 60,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02}
+      ],
+      "expect": {"verdict": "settle", "language": "eng", "rule": "audio.standard/short-item"}
+    },
+    {
+      "name": "contradicting a tag at the standard bar is refused",
+      "why": "The asymmetry, stated: this evidence would settle an untagged track and is not enough to overturn one.",
+      "tag": "deu",
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.95, "deu": 0.05},
+        {"eng": 0.94, "deu": 0.06},
+        {"eng": 0.95, "deu": 0.05},
+        {"eng": 0.96, "deu": 0.04},
+        {"eng": 0.95, "deu": 0.05},
+        {"eng": 0.94, "deu": 0.06}
+      ],
+      "expect": {"verdict": "unsettled", "reasons": ["tagdisagree"]}
+    },
+    {
+      "name": "contradicting a tag is accepted once the higher bar is cleared",
+      "why": "Eight counted windows, near-certainty and unanimity. An overturn rewrites what somebody chose.",
+      "tag": "deu",
+      "runtime_s": 5400,
+      "windows": [
+        {"eng": 0.995, "deu": 0.005},
+        {"eng": 0.996, "deu": 0.004},
+        {"eng": 0.995, "deu": 0.005},
+        {"eng": 0.997, "deu": 0.003},
+        {"eng": 0.995, "deu": 0.005},
+        {"eng": 0.996, "deu": 0.004},
+        {"eng": 0.995, "deu": 0.005},
+        {"eng": 0.997, "deu": 0.003},
+        {"eng": 0.996, "deu": 0.004}
+      ],
+      "expect": {"verdict": "overturn", "language": "eng", "rule": "audio.override"}
+    },
+    {
+      "name": "one strongly disagreeing window collapses the score",
+      "why": "The geometric mean, and the reason for it: five complacent windows do not outvote one that is certain.",
+      "tag": null,
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"deu": 0.999, "eng": 0.001}
+      ],
+      "expect": {"verdict": "unsettled", "reasons": ["lowconf"]}
+    },
+    {
+      "name": "two languages splitting the windows is a conclusion, not a failure",
+      "why": "A track that is genuinely two languages cannot be described by one tag, so it never becomes a write.",
+      "tag": null,
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.95, "deu": 0.05},
+        {"deu": 0.95, "eng": 0.05},
+        {"eng": 0.94, "deu": 0.06},
+        {"deu": 0.96, "eng": 0.04},
+        {"eng": 0.95, "deu": 0.05},
+        {"deu": 0.94, "eng": 0.06},
+        {"eng": 0.96, "deu": 0.04},
+        {"deu": 0.95, "eng": 0.05}
+      ],
+      "expect": {"verdict": "mixed"}
+    },
+    {
+      "name": "a track with almost no speech in it is not a language question",
+      "why": "Under a minute of speech in a whole track: the answer is that there is no linguistic content, and that is writable.",
+      "tag": null,
+      "runtime_s": 3600,
+      "speech_total_s": 18.0,
+      "windows": [
+        {"eng": 0.30, "deu": 0.25, "fra": 0.20},
+        {"eng": 0.28, "deu": 0.27, "fra": 0.21}
+      ],
+      "expect": {"verdict": "zxx", "language": "zxx", "rule": "zxx.no-speech"}
+    },
+    {
+      "name": "a strong prior that agrees lowers the audio bar",
+      "why": "Rule B. The prior never speaks for the audio; it lets slightly weaker audio be enough.",
+      "tag": null,
+      "runtime_s": 3600,
+      "prior": {"language": "eng", "strength": "strong", "sources": ["sibling:season:9/9"]},
+      "windows": [
+        {"eng": 0.90, "deu": 0.10},
+        {"eng": 0.90, "deu": 0.10},
+        {"eng": 0.89, "deu": 0.11},
+        {"eng": 0.91, "deu": 0.09}
+      ],
+      "expect": {"verdict": "settle", "language": "eng", "rule": "B.prior-strong"}
+    },
+    {
+      "name": "a prior that points the other way changes nothing",
+      "why": "A prior can only ever agree with the audio. Against it, it is not evidence, it is a guess.",
+      "tag": null,
+      "runtime_s": 3600,
+      "prior": {"language": "deu", "strength": "strong", "sources": ["sibling:season:9/9"]},
+      "windows": [
+        {"eng": 0.90, "deu": 0.10},
+        {"eng": 0.90, "deu": 0.10},
+        {"eng": 0.89, "deu": 0.11},
+        {"eng": 0.91, "deu": 0.09}
+      ],
+      "expect": {"verdict": "unsettled"}
+    },
+    {
+      "name": "a prior blocked by the material is not used at all",
+      "why": "Commentary, extras, specials and clips are where context is systematically misleading.",
+      "tag": null,
+      "runtime_s": 3600,
+      "prior": {"language": "eng", "strength": "strong", "sources": ["sibling:season:9/9"],
+                "blocked": ["commentary"]},
+      "windows": [
+        {"eng": 0.90, "deu": 0.10},
+        {"eng": 0.90, "deu": 0.10},
+        {"eng": 0.89, "deu": 0.11},
+        {"eng": 0.91, "deu": 0.09}
+      ],
+      "expect": {"verdict": "unsettled"}
+    },
+    {
+      "name": "one foreign-language scene is trimmed, with corroboration",
+      "why": "Rule C. Two windows legitimately disagree; the rest are unanimous, and two independent stages agree.",
+      "tag": null,
+      "runtime_s": 7200,
+      "support": {"text_confirmed": true, "family_agreed": true},
+      "windows": [
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.98, "fra": 0.02},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.98, "fra": 0.02},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.99, "fra": 0.01},
+        {"fra": 0.98, "eng": 0.02},
+        {"fra": 0.97, "eng": 0.03}
+      ],
+      "expect": {"verdict": "settle", "language": "eng", "rule": "C.trimmed"}
+    },
+    {
+      "name": "the same evidence without corroboration does not settle",
+      "why": "Without the two stages, trimming is a licence to discard the inconvenient windows.",
+      "tag": null,
+      "runtime_s": 7200,
+      "support": {"text_confirmed": false, "family_agreed": false},
+      "windows": [
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.98, "fra": 0.02},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.98, "fra": 0.02},
+        {"eng": 0.99, "fra": 0.01},
+        {"eng": 0.99, "fra": 0.01},
+        {"fra": 0.98, "eng": 0.02},
+        {"fra": 0.97, "eng": 0.03}
+      ],
+      "expect": {"verdict": "unsettled"}
+    },
+    {
+      "name": "a window with no speech in it does not get a vote",
+      "why": "A music-only window still produces a language vector, and averaging it in is how silence acquires an opinion.",
+      "tag": null,
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"_counted": false, "deu": 0.60, "fra": 0.40}
+      ],
+      "expect": {"verdict": "settle", "language": "eng", "rule": "audio.standard"}
+    },
+    {
+      "name": "codes that mean nothing are not tags",
+      "why": "An undetermined tag is the absence of a claim, so settling one is a settle and not an overturn.",
+      "tag": "und",
+      "runtime_s": 3600,
+      "windows": [
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.98, "deu": 0.02},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.99, "deu": 0.01},
+        {"eng": 0.97, "deu": 0.03},
+        {"eng": 0.99, "deu": 0.01}
+      ],
+      "expect": {"verdict": "settle", "language": "eng", "rule": "audio.standard"}
+    },
+    {
+      "name": "a tag spelled the other way is the same tag",
+      "why": "Two spellings of one language are not a disagreement, and treating them as one proposes a pointless write.",
+      "tag": "ger",
+      "runtime_s": 3600,
+      "windows": [
+        {"deu": 0.99, "eng": 0.01},
+        {"deu": 0.98, "eng": 0.02},
+        {"deu": 0.99, "eng": 0.01},
+        {"deu": 0.99, "eng": 0.01},
+        {"deu": 0.97, "eng": 0.03}
+      ],
+      "expect": {"verdict": "confirm", "language": "deu", "rule": "A.tag-confirm"}
+    }
+  ]
 }
