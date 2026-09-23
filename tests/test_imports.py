@@ -1,9 +1,10 @@
 """Every module in every package imports, on its own, with nothing installed.
 
-A skeleton that does not import is not a skeleton, it is a broken package:
-an import error only shows up when somebody installs the distribution, which
-is the worst moment to find out. The packages carry stubs for a while yet, so
-this is the cheapest check that keeps the tree honest in the meantime.
+An import error only shows up when somebody installs the distribution, which
+is the worst moment to find out. There are no skeletons left in the tree, so
+what this now checks is that every module stands up on a machine with no
+optional dependency present at all -- which is the state most people will
+first meet these packages in.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
@@ -41,7 +42,7 @@ def test_module_imports(name: str) -> None:
 #: What each package claims to be. A released package and one that is still a
 #: set of skeletons must not report the same thing, so the expectation is
 #: written down here rather than inferred.
-VERSIONS = {"mkvkit": "0.2.0", "jfkit": "0.3.0", "dubalign": "0.1.0"}
+VERSIONS = {"mkvkit": "0.3.0", "jfkit": "0.3.0", "dubalign": "0.1.0"}
 
 
 def test_every_package_reports_the_version_it_should() -> None:
@@ -73,3 +74,13 @@ def test_every_package_ships_its_own_licence() -> None:
         init = REPO_ROOT / "packages" / package / "src" / package / "__init__.py"
         spdx = "SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0"
         assert spdx in init.read_text(encoding="utf-8")
+
+
+def test_no_module_is_still_a_skeleton() -> None:
+    """The stub marker is gone from every package, and stays gone."""
+    for package in PACKAGES:
+        root = REPO_ROOT / "packages" / package / "src" / package
+        for path in sorted(root.rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            assert "skeleton only" not in text, path
+            assert "Status: skeleton" not in text, path

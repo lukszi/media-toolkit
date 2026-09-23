@@ -82,7 +82,7 @@ Validation reports *every* problem in one message, not the first one it hits.
 
 ## What is released
 
-`mkvkit` 0.2.0, `jfkit` 0.3.0 and `dubalign` 0.1.0.
+`mkvkit` 0.3.0, `jfkit` 0.3.0 and `dubalign` 0.1.0.
 
 **Edit a Matroska file, and prove you changed only what you meant to.**
 `mkvkit probe` says what is in a file, from both programs that can describe
@@ -95,6 +95,15 @@ one payload hash per stream as the evidence. `mkvkit swap` then parks the
 original and puts the rebuild in its exact path. `mkvkit chapters` and
 `mkvkit tags` read, check and write the two elements that are easiest to
 damage by accident. Everything that writes defaults to a dry run.
+
+**And a chapter list that matches your marks may still describe another
+film's scenes.** A published list whose timestamps agree with your file's to
+within two seconds is certainly for your cut; that is no evidence at all about
+its *names*, and a list can match that well while half of its names describe
+a scene a couple of chapters away. `mkvkit chapters classify|match|windows|selfcheck|plan` is the
+method as code -- which of three jobs a candidate is, whether the names sit on
+the marks they describe, and a refusal rather than a guess where they do not.
+`docs/methods/chapter-names.md` is the write-up.
 
 The reasoning behind all of it is `docs/methods/verification-discipline.md`,
 and every rule in that document names the function that implements it.
@@ -154,12 +163,12 @@ the cause, the fix, how it was confirmed, and the version it was confirmed
 against; every method document names the function that implements each of its
 rules and ends with what is *not* implemented.
 
-What is left in the tree is a documented skeleton that raises rather than
-guesses -- the half of chapter-name verification that needs the content rather
-than the arithmetic, and the planner that works over a whole collection. The
-server side no longer has any: every module that was a skeleton at `jfkit`
-0.1.0 is implemented at 0.3.0. Each package's `CHANGELOG.md` says which is
-which.
+**Nothing in the tree is a skeleton any more.** Every module that was one at
+the first release of either package is implemented, tested and documented at
+`jfkit` 0.3.0 and `mkvkit` 0.3.0. Each package's `CHANGELOG.md` says what
+arrived when, and what each release deliberately does not do -- the largest of
+which is that there is no chapter *namer* here, only the machinery that
+checks names and refuses the ones that do not hold up.
 
 ## Safety principles
 

@@ -3,6 +3,81 @@
 This file records what changed and why it is safe to install. Dates are the
 day the work was done.
 
+## 0.3.0 -- 2026-09-23
+
+Chapter names: where a published list comes from, whether its names describe
+the marks they sit on, and how to write names of your own without writing
+something confidently wrong. The last skeletons in this package are gone.
+
+### Added
+
+- **`mkvkit.chapters.sources`** -- a protocol for anything that can offer
+  chapter lists, one worked adapter for the shape those archives have, and the
+  classification that decides what may be done with a candidate: names onto
+  marks you already have, times *and* names onto a file with none, or times
+  only. The adapter ships **disabled**, caches on disk, rate-limits itself and
+  says what it is; the fetching is injected, so nothing in the test suite
+  opens a socket. A candidate under half real names is a list of times: a
+  count that only tested for a non-empty string once wrote lists of pure
+  labels into files.
+- **`mkvkit.chapters.verify`** -- the half of the question that needs the
+  content. Twenty seconds of original-language audio from each mark and one
+  frame shortly after it, **both out of a single seek**, behind pluggable
+  evidence providers; the content-word hit rate of the name list scored at
+  offsets −4 to +4, where a clearly better score away from zero is a list
+  typed against different marks; corroboration from any second published list,
+  which also catches a list that belongs to another film entirely; and a
+  three-way verdict recomputed centrally from the per-mark calls, of which
+  only `ALIGNED` may be written.
+- **`mkvkit.chapters.names`** -- the matcher, and the rules. A list that fits
+  better one mark along is **refused, never slid into place**. The rules come
+  in two strengths: a timecode or a bare label is not a name at all, while
+  length, punctuation and language are advisory for a name off a disc and
+  blocking for one a program just wrote. A chapter with no dialogue gets the
+  structural name where one belongs and the empty string everywhere else. A
+  provenance tag records where the names came from, merged into the file's own
+  tags rather than replacing them.
+- **`mkvkit.chapters.windows`** and **`mkvkit.chapters.transcripts`** -- one
+  window of text per mark, sized by the chapter's duration and sampled evenly
+  across its whole span rather than head-and-tail, because a flat cap elides
+  the middle of a long chapter and the middle is what the chapter is about. A
+  cue crossing a mark is split at it, a transcriber's long segments are re-cut
+  from word timings, and a transcript that is a stub or stops early is refused
+  with the reason rather than described.
+- **`mkvkit.chapters.selfcheck`** -- the grading pass, with coverage,
+  duplicates, order words, language and length as mechanical checks and four
+  grades. **Any `wrong` grade holds the whole film back**, and the bar is
+  applied in one place whoever produced the grades.
+- **`mkvkit.plan`** -- a per-file plan: chapters, tags, track edits and title
+  in one object, printable as the dry run, carried out in a single invocation,
+  and comparable with the previous run's plan through `explain_churn()`.
+- **`mkvkit chapters classify | match | windows | selfcheck | plan`** on the
+  command line, dry run by default. The judging half runs from a recorded
+  evidence file, so it needs no decoder, no model and no media.
+- **`docs/methods/chapter-names.md`**, leading with the misalignment finding as
+  a piece that stands on its own, plus five new entries in the container
+  reference.
+
+### Changed
+
+- `is_generic_name()` knows the word for a chapter in three more languages. A
+  word missing from that list is a label counted as a name.
+
+### Known limits
+
+- **There is no namer, and there will not be one here.** The writing step in
+  the work this came from was a person reading the windows. What ships is the
+  window builder, the rules, the self-check and the verifier; `mkvkit
+  chapters` has no `name` verb.
+- The per-mark call reads the transcript, not the picture. The frames are
+  collected for a person, and a reader's calls can be passed into the verdict
+  instead.
+- Nothing here finds subtitle files. The window builder takes cues, and
+  matching sidecars to films by walking directories is more dangerous than it
+  looks -- see the method document.
+- Nothing has been installed as a distribution or built as a wheel. The
+  version is a claim about this tree.
+
 ## 0.2.0 -- 2026-09-23
 
 The file side: reading a file, changing one thing in it, and proving that only
@@ -58,10 +133,11 @@ that thing changed. This release is useful with no media server anywhere.
 ### Known limits
 
 - `mkvkit.chapters.verify` (were these names typed against these marks?) and
-  `mkvkit.chapters.names` are still skeletons. The arithmetic half of that
-  question is in `chapters.grid`; the half that needs the content is not here.
-- `mkvkit.plan` -- the policy-driven planner over a whole collection and its
-  churn report -- is still a skeleton. `mkvkit.remux` plans one file.
+  `mkvkit.chapters.names` are still skeletons at this version. The arithmetic
+  half of that question is in `chapters.grid`; the half that needs the content
+  is not here. Both land at 0.3.0.
+- `mkvkit.plan` is still a skeleton at this version. `mkvkit.remux` plans one
+  file.
 - Nothing has been installed as a distribution or built as a wheel. The
   version is a claim about this tree.
 
