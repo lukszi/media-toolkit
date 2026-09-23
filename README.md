@@ -155,8 +155,8 @@ records the release it was checked against.
 Beside them, references that stand on their own: `docs/gotchas/` on one media
 server release and on Matroska and ffmpeg, guides to each side in
 `docs/mkvkit.md` and `docs/jfkit.md`, `docs/methods/` on the verification
-discipline, aligning a dub to a different transfer, the swap procedure and
-evidence-first deletion, `docs/patterns/` on detached jobs and the device
+discipline, the spoken-language settle ladder, aligning a dub to a different
+transfer, the swap procedure and evidence-first deletion, `docs/patterns/` on detached jobs and the device
 gate, `docs/runbooks/` on looking after the catalogue database, and two fully
 invented worked recipes under `examples/recipes/`. Every gotcha entry carries the symptom,
 the cause, the fix, how it was confirmed, and the version it was confirmed
@@ -224,12 +224,20 @@ with a known answer is a number generator that has not yet been caught.
 
 ## About the numbers
 
-Several constants here were fitted against one collection: language-
-identification confidence bars, agreement fractions, window budgets, and the
-alignment tolerance of 40 ms. They ship
+Several constants here were **fitted** against one collection: the
+language-identification confidence bars, the agreement fractions, the
+conditions on the trimmed aggregate, and the chapter window budgets. They ship
 as documented defaults with the method used to fit them, so they can be
-re-fitted on your own material. They are not universals, and nothing in the
-documentation claims they are.
+re-fitted on your own material -- `docs/methods/langid-ladder.md` gives the
+re-fitting procedure.
+
+The alignment tolerance of 40 ms is a different kind of number, and it is
+labelled as one: a **chosen** house bar of roughly one frame of picture, not a
+value fitted against anything. `docs/methods/pal-alignment.md` says so where it
+defines it.
+
+Neither kind is a universal, and nothing in the documentation claims they
+are.
 
 Nothing in the documentation describes the material they were fitted on: no
 counts, sizes or timings of anybody's collection.

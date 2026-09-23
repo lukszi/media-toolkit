@@ -320,6 +320,12 @@ def scan_track(
     it means is :mod:`mkvkit.langid.ladder`'s job, and keeping the two apart is
     what makes the decision re-runnable against evidence that cost hours to
     collect.
+
+    The window budget -- ``count``, ``window_s`` and ``offsets`` -- is a
+    *fitted* default rather than a derived one: five windows of twenty
+    seconds, spread the way :data:`DEFAULT_OFFSETS` spreads them. It is an
+    argument for that reason. See ``docs/methods/langid-ladder.md`` for how
+    to re-fit it.
     """
     starts = window_starts(runtime_s, count, window_s, offsets)
     t0 = time.monotonic()

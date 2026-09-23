@@ -62,6 +62,12 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
+# The character budgets and the two refusal thresholds below are *fitted*
+# defaults, not derived ones; see `docs/methods/chapter-names.md`. A
+# collection of half-hour episodes or of heavily dialogued material wants
+# different ones; every one of them is an argument to the function that
+# uses it, so re-fitting is a call site rather than an edit here.
+
 #: Characters of window per minute of chapter. Dialogue density varies far
 #: more than this between films; the number only has to be large enough that
 #: an ordinary chapter is never cut at all.
