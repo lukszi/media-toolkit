@@ -46,7 +46,7 @@ only media filenames that may appear anywhere in the repository.
 
 `tiny_multitrack.mkv`, `tiny_multitrack.mp4`, `not_really_mkv.mkv`,
 `offset_pair.mka`, `chapter_grid.mkv`, `chapter_grid_pal.mkv`, `cueless.mkv`,
-`sample_cues.srt`.
+`sample_cues.srt`, `tag_override.mkv`.
 
 None of them is committed. They are built from test patterns and tones by
 `python -m tests.fixtures build`, and each one exists to make a single known

@@ -41,6 +41,15 @@ Every fixture exists to make one known answer checkable:
 ``sample_cues.srt``
     a text subtitle file with known cue times, muxed into the multitrack
     fixture and also usable on its own.
+
+``tag_override.mkv``
+    the multitrack file with one tag element added: a language tag on the
+    first audio track claiming a language its own header does not. That tag
+    is what a demuxer reports, so this fixture is the difference between a
+    language edit that works and one that only looks as if it did. It is the
+    one fixture that needs the container tools as well, because nothing in
+    the encoder writes that element; where they are absent it is not built
+    and the tests that want it skip.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
@@ -66,12 +75,15 @@ __all__ = [
     "FIXTURE_DIR",
     "GRID_DURATION_S",
     "OFFSET_MS",
+    "OPTIONAL_NAMES",
     "PAL_RATIO",
     "SAMPLE_RATE",
     "SUBTITLE_CUES",
+    "TAG_OVERRIDE_LANGUAGE",
     "build",
     "ffmpeg_missing",
     "main",
+    "mkvtoolnix_missing",
     "probe",
 ]
 
@@ -120,6 +132,9 @@ SUBTITLE_CUES: tuple[tuple[float, float, str], ...] = (
     (3.5, 4.5, "Third cue"),
 )
 
+#: The language the added tag claims, against the first audio track's header.
+TAG_OVERRIDE_LANGUAGE = "fra"
+
 NAMES = (
     "sample_cues.srt",
     "tiny_multitrack.mkv",
@@ -130,11 +145,23 @@ NAMES = (
     "chapter_grid_pal.mkv",
 )
 
+#: Built only where the container tools are installed as well.
+OPTIONAL_NAMES = ("tag_override.mkv",)
+
 
 # -------------------------------------------------------------------- plumbing
 def ffmpeg_missing() -> str | None:
     """None when both programs are on the PATH, otherwise what is missing."""
     absent = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    return ", ".join(absent) if absent else None
+
+
+def mkvtoolnix_missing() -> str | None:
+    """None when the container tools are on the PATH, otherwise what is missing."""
+    absent = [
+        name for name in ("mkvmerge", "mkvpropedit", "mkvextract")
+        if shutil.which(name) is None
+    ]
     return ", ".join(absent) if absent else None
 
 
@@ -272,6 +299,44 @@ def _chapter_grid(path: Path, metadata: Path, scale: float) -> None:
     )
 
 
+def _tag_override(path: Path, source: Path, work: Path) -> None:
+    """A copy of the multitrack file, plus a language tag that contradicts a header.
+
+    The tag is merged into whatever the file already carries rather than
+    replacing it, because writing tags replaces the whole element and a
+    fixture built by throwing the existing ones away would not look like a
+    file anybody actually has.
+    """
+    shutil.copyfile(source, path)
+    identified = json.loads(_run("mkvmerge", ["-J", str(path)]))
+    audio = [t for t in identified["tracks"] if t["type"] == "audio"]
+    uid = audio[0]["properties"]["uid"]
+    existing = _run("mkvextract", [str(path), "tags"]).lstrip("﻿").strip()
+    added = "\n".join(
+        [
+            "  <Tag>",
+            f"    <Targets><TrackUID>{uid}</TrackUID></Targets>",
+            "    <Simple>",
+            "      <Name>LANGUAGE</Name>",
+            f"      <String>{TAG_OVERRIDE_LANGUAGE}</String>",
+            "    </Simple>",
+            "  </Tag>",
+            "",
+        ]
+    )
+    if "</Tags>" in existing:
+        document = existing.replace("</Tags>", added + "</Tags>")
+    else:
+        document = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE Tags SYSTEM "matroskatags.dtd">\n'
+            "<Tags>\n" + added + "</Tags>\n"
+        )
+    document_path = work / "tag_override.tags.xml"
+    document_path.write_text(document, encoding="utf-8", newline="\n")
+    _run("mkvpropedit", [str(path), "--tags", f"all:{document_path}"])
+
+
 # ----------------------------------------------------------------------- build
 def build(out_dir: Path | None = None, *, force: bool = False) -> dict[str, Path]:
     """Generate anything missing and return every fixture by name."""
@@ -301,6 +366,13 @@ def build(out_dir: Path | None = None, *, force: bool = False) -> dict[str, Path
             metadata = root / f"{Path(name).stem}.ffmeta"
             _chapter_metadata(metadata, scale)
             _chapter_grid(built[name], metadata, scale)
+    if mkvtoolnix_missing() is None:
+        optional = root / "tag_override.mkv"
+        if force:
+            optional.unlink(missing_ok=True)
+        if not optional.exists():
+            _tag_override(optional, built["tiny_multitrack.mkv"], root)
+        built["tag_override.mkv"] = optional
     return built
 
 
@@ -324,7 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.action == "list":
-        for name in NAMES:
+        for name in (*NAMES, *OPTIONAL_NAMES):
             print(name)
         return 0
     if args.action == "clean":

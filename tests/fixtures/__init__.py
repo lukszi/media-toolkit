@@ -16,11 +16,14 @@ from .make_fixtures import (
     FIXTURE_DIR,
     GRID_DURATION_S,
     OFFSET_MS,
+    OPTIONAL_NAMES,
     PAL_RATIO,
     SAMPLE_RATE,
     SUBTITLE_CUES,
+    TAG_OVERRIDE_LANGUAGE,
     build,
     ffmpeg_missing,
+    mkvtoolnix_missing,
     probe,
 )
 
@@ -33,10 +36,13 @@ __all__ = [
     "FIXTURE_DIR",
     "GRID_DURATION_S",
     "OFFSET_MS",
+    "OPTIONAL_NAMES",
     "PAL_RATIO",
     "SAMPLE_RATE",
     "SUBTITLE_CUES",
+    "TAG_OVERRIDE_LANGUAGE",
     "build",
     "ffmpeg_missing",
+    "mkvtoolnix_missing",
     "probe",
 ]
