@@ -46,8 +46,11 @@ REGISTRY: dict[str, SubCommand] = {}
 
 def _register_own() -> None:
     """Register the sub-commands this package provides, if they can load."""
+    from .commands import REGISTRARS
     from .langid.cli import register as langid
 
+    for name, register in REGISTRARS.items():
+        REGISTRY.setdefault(name, register)
     REGISTRY.setdefault("langid", langid)
 
 
