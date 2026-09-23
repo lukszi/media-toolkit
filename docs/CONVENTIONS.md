@@ -23,6 +23,12 @@ Example filenames used in docstrings and documents, and nowhere else:
 The second one is the shape that a server reads as an episode *range*; it is
 listed here so it can be written down in the module that predicts it.
 
+Where a command-line example needs two files and a title would only get in
+the way, the two sides of an alignment are `keeper.mkv` and `donor.mkv`, and
+what comes out is `result.mkv`. They are roles rather than names, and they are
+listed here for the same reason everything else is: they are the only media
+filenames of that shape allowed in the repository.
+
 Paths: `/srv/media/movies`, `/srv/media/series`, `/srv/staging`,
 `/srv/parked`. A Windows example is written as a generic location, never as a
 profile directory: `C:/Media/Movies` and `C:/Media/Series`.
@@ -45,11 +51,12 @@ for the same reason: the privacy gate reads this document, and these are the
 only media filenames that may appear anywhere in the repository.
 
 `tiny_multitrack.mkv`, `tiny_multitrack.mp4`, `not_really_mkv.mkv`,
-`offset_pair.mka`, `chapter_grid.mkv`, `chapter_grid_pal.mkv`, `cueless.mkv`,
-`sample_cues.srt`, `tag_override.mkv`.
+`offset_pair.mka`, `drift_pair.mka`, `chapter_grid.mkv`,
+`chapter_grid_pal.mkv`, `cueless.mkv`, `sample_cues.srt`, `tag_override.mkv`.
 
 None of them is committed. They are built from test patterns and tones by
 `python -m tests.fixtures build`, and each one exists to make a single known
 answer checkable -- a language tag that contradicts a header, a container that
 is not what its extension claims, a delay the measurement has to recover, a
-grid of marks at times the code has to reproduce.
+grid of marks at times the code has to reproduce, a pair of transfers whose
+offset steps once and then slides.

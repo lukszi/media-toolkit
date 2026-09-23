@@ -81,6 +81,25 @@ def test_the_offset_pair_carries_the_delay_it_was_given(
     assert abs(measured_ms - OFFSET_MS) < 20.0, measured_ms
 
 
+def test_the_drifting_pair_carries_all_three_defects(
+    media_fixtures: dict[str, Path]
+) -> None:
+    """The one fixture that is not one known answer but three at once."""
+    if "drift_pair.mka" not in media_fixtures:
+        pytest.skip("the drifting pair needs the alignment package to be importable")
+    from tests.synthetic import HEAD_LAG_S, RATE_AFTER, STEP_AT_S, STEP_DROP_S
+
+    streams = _streams(media_fixtures["drift_pair.mka"], "audio")
+    assert len(streams) == 2
+    assert [s["tags"]["title"] for s in streams] == ["reference", "a different transfer"]
+    reference, transfer = (_duration_s(s) for s in streams)
+    assert reference == pytest.approx(120.0, abs=0.05)
+    # the gap at the head, less the stretch that is missing, less the rate
+    assert transfer == pytest.approx(
+        HEAD_LAG_S + STEP_AT_S + (120.0 - STEP_AT_S - STEP_DROP_S) / RATE_AFTER, abs=0.05
+    )
+
+
 def test_the_chapter_grid_is_where_it_says(media_fixtures: dict[str, Path]) -> None:
     chapters = probe(media_fixtures["chapter_grid.mkv"])["chapters"]
     assert len(chapters) == len(CHAPTER_TIMES_S)

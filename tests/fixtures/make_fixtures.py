@@ -42,6 +42,14 @@ Every fixture exists to make one known answer checkable:
     a text subtitle file with known cue times, muxed into the multitrack
     fixture and also usable on its own.
 
+``drift_pair.mka``
+    two tracks that are the same programme in two transfers: one is the
+    reference, the other carries a leading gap, a stretch that is missing
+    entirely, and a rate difference after it. Every defect an alignment has to
+    tell apart, in one file, with the answers written down in
+    ``tests/synthetic.py`` -- which is also where the two signals come from, so
+    the file and the in-memory pair the unit tests use are the same pair.
+
 ``tag_override.mkv``
     the multitrack file with one tag element added: a language tag on the
     first audio track claiming a language its own header does not. That tag
@@ -71,6 +79,7 @@ __all__ = [
     "CHAPTER_NAMES",
     "CHAPTER_STEP_S",
     "CHAPTER_TIMES_S",
+    "DRIFT_SAMPLE_RATE",
     "DURATION_S",
     "FIXTURE_DIR",
     "GRID_DURATION_S",
@@ -135,6 +144,11 @@ SUBTITLE_CUES: tuple[tuple[float, float, str], ...] = (
 #: The language the added tag claims, against the first audio track's header.
 TAG_OVERRIDE_LANGUAGE = "fra"
 
+#: The rate the drifting pair is written at. The rate difference in it is a
+#: whole number of samples at this rate (48024 against 48000), so the file can
+#: be rebuilt by a program as well as in memory and the two agree exactly.
+DRIFT_SAMPLE_RATE = 48000
+
 NAMES = (
     "sample_cues.srt",
     "tiny_multitrack.mkv",
@@ -145,8 +159,12 @@ NAMES = (
     "chapter_grid_pal.mkv",
 )
 
-#: Built only where the container tools are installed as well.
-OPTIONAL_NAMES = ("tag_override.mkv",)
+#: Built only where something beyond the two media programs is available:
+#: ``tag_override.mkv`` needs the container tools, and ``drift_pair.mka`` needs
+#: the alignment package itself, because the two signals in it are the ones its
+#: own tests measure. Both are skipped rather than faked where they cannot be
+#: built, and the tests that want them skip with them.
+OPTIONAL_NAMES = ("tag_override.mkv", "drift_pair.mka")
 
 
 # -------------------------------------------------------------------- plumbing
@@ -154,6 +172,15 @@ def ffmpeg_missing() -> str | None:
     """None when both programs are on the PATH, otherwise what is missing."""
     absent = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
     return ", ".join(absent) if absent else None
+
+
+def _alignment_available() -> bool:
+    """Whether the package whose answers the drifting pair carries is importable."""
+    try:
+        import dubalign.pal  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 def mkvtoolnix_missing() -> str | None:
@@ -264,6 +291,45 @@ def _offset_pair(path: Path) -> None:
     )
 
 
+def _drift_pair(path: Path, work: Path) -> None:
+    """Two transfers of one programme, differing in every way that matters.
+
+    The two signals are built by ``tests.synthetic``, which is also what the
+    unit tests measure, and written into one container through raw samples.
+    That is deliberate: the file fixture and the in-memory pair are the same
+    pair, so an answer that holds for one holds for the other and there is only
+    one answer key to keep right.
+
+    It is the one fixture that needs the alignment package to be importable,
+    which is why it is optional: a checkout with nothing installed can still
+    build everything else.
+    """
+    import numpy as np
+
+    from tests.synthetic import synthetic_pair
+
+    pair = synthetic_pair(sr=DRIFT_SAMPLE_RATE)
+    raw = []
+    for name, signal in (("reference", pair.reference), ("dub", pair.other)):
+        target = work / f"drift_{name}.f32le"
+        np.asarray(signal, dtype=np.float32).tofile(target)
+        raw.append(target)
+    args: list[str] = []
+    for target in raw:
+        args += [
+            "-f", "f32le", "-ar", str(DRIFT_SAMPLE_RATE), "-ac", "1", "-i", str(target)
+        ]
+    args += [
+        "-map", "0:a", "-map", "1:a", "-c:a", "flac",
+        "-metadata:s:a:0", "title=reference",
+        "-metadata:s:a:1", "title=a different transfer",
+        str(path),
+    ]
+    _ffmpeg(*args)
+    for target in raw:
+        target.unlink(missing_ok=True)
+
+
 def _chapter_metadata(path: Path, scale: float) -> None:
     lines = [";FFMETADATA1"]
     for index, start in enumerate(CHAPTER_TIMES_S):
@@ -361,11 +427,20 @@ def build(out_dir: Path | None = None, *, force: bool = False) -> dict[str, Path
         shutil.copyfile(built["tiny_multitrack.mp4"], built["not_really_mkv.mkv"])
     if not built["offset_pair.mka"].exists():
         _offset_pair(built["offset_pair.mka"])
+
     for name, scale in (("chapter_grid.mkv", 1.0), ("chapter_grid_pal.mkv", PAL_RATIO)):
         if not built[name].exists():
             metadata = root / f"{Path(name).stem}.ffmeta"
             _chapter_metadata(metadata, scale)
             _chapter_grid(built[name], metadata, scale)
+    drift = root / "drift_pair.mka"
+    if force:
+        drift.unlink(missing_ok=True)
+    if drift.exists():
+        built["drift_pair.mka"] = drift
+    elif _alignment_available():
+        _drift_pair(drift, root)
+        built["drift_pair.mka"] = drift
     if mkvtoolnix_missing() is None:
         optional = root / "tag_override.mkv"
         if force:
