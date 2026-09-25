@@ -64,6 +64,7 @@ __all__ = [
     "Phase",
     "chapter_rows",
     "compare",
+    "every_user",
     "fetch",
     "load",
     "normalise_chapter_name",
@@ -198,6 +199,20 @@ class Comparison:
 def fetch(client: Client, item_id: str) -> dict[str, Any]:
     """The full record for one item, from the route that returns all of it."""
     return client.item(item_id, user_scoped=True)
+
+
+def every_user(client: Client) -> list[str]:
+    """The identifier of every user the server has, for a play-state check.
+
+    A check that reads play state for the users somebody remembered to name
+    passes over everybody else, and "0 user(s) checked" reads like a pass. So
+    a caller that names nobody gets everybody. An empty answer is returned as
+    empty rather than guessed at: a server with no users is a server whose
+    answer cannot be trusted, and the caller decides what that means.
+    """
+    found = client.get("/Users")
+    rows = found if isinstance(found, list) else []
+    return [str(row["Id"]) for row in rows if isinstance(row, dict) and row.get("Id")]
 
 
 def user_data(

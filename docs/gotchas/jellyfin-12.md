@@ -471,8 +471,10 @@ restore it explicitly afterwards.
 Watch state, favourites and resume positions belong to each account
 separately. A restore that only covers the administrative account looks
 complete and is not. This is also a privacy matter: the fewer of those rows
-you handle, the better. `jfkit`'s deletion helper checks every account before
-it will touch anything.
+you handle, the better. `jfkit delete` and `jfkit swap` check every account
+the server lists (`GET /Users`) unless told to check named ones, and refuse
+to apply when that list cannot be read or comes back empty -- "0 users
+checked" is nobody having been asked, not a pass.
 
 ### 5.5 Extras attach by owner, and detach
 

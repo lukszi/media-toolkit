@@ -203,8 +203,10 @@ dry-run path is not merged.
 
 **Park, never delete.** Nothing is removed. A replaced original is *moved* to
 the configured parked directory and left there; the caller decides, later and
-by hand, whether it goes. Deletion tooling produces evidence and a manifest --
-it does not free space on its own.
+by hand, whether it goes. `jfkit delete` parks too: it moves each released
+file aside and then tells the server the path is gone, so the server's own
+scan drops the row. It never asks the server to delete an item, because that
+call removes the item's whole folder from disk.
 
 **Verify both sides, inside the final container.** "The command exited 0" is
 not verification. A rebuild is proved by collecting stream-level evidence from

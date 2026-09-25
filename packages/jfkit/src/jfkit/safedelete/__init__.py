@@ -22,9 +22,13 @@ check, not a reason to proceed.
 
 **Nothing is deleted. Things are moved.** The file goes to a parking
 directory that keeps its layout, and it stays there until a person decides
-otherwise. The catalogue row is removed only after the move has succeeded,
-in that order, because a row removed before a move that then fails leaves a
-file nothing knows about.
+otherwise. The catalogue row goes only after the move has succeeded, in that
+order, because a row removed before a move that then fails leaves a file
+nothing knows about. And the row is never removed by asking the server to
+delete the item: on this server that call deletes the item's *containing
+folder* from disk -- sidecars, artwork, extras and any other film that shares
+it. The server is told instead that the path is gone, and its own scan drops
+the row whose file is missing, which touches nothing on disk.
 
 **Every step of every item is logged, including the ones that did nothing.**
 The audit file is append-only and is the answer to "what happened to X",
@@ -44,6 +48,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import shutil
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -52,8 +57,9 @@ from pathlib import Path
 from typing import Any
 
 from ..client import Client
-from ..dto import fetch, user_data
+from ..dto import every_user, fetch, user_data
 from ..errors import ItemNotFound
+from ..refresh import NotifyRefused, notify_changed
 from .evidence import FolderContents, Identity, folder_contents, identical, media_free
 
 __all__ = [
@@ -64,6 +70,7 @@ __all__ = [
     "Outcome",
     "load_manifest",
     "preconditions",
+    "resolve_users",
     "safe_delete",
 ]
 
@@ -235,7 +242,13 @@ def preconditions(
     allowed_categories: Iterable[str],
     users: Sequence[str] = (),
 ) -> tuple[list[Check], FolderContents | None]:
-    """Every check for one candidate, against the world as it is now."""
+    """Every check for one candidate, against the world as it is now.
+
+    ``users`` narrows the play-state check to the users named. Naming nobody
+    means *everybody*: every user the server lists is checked, and a server
+    that cannot list them, or lists none, fails the check rather than
+    passing it with nobody consulted.
+    """
     checks: list[Check] = []
     released = set(allowed_categories)
 
@@ -266,17 +279,7 @@ def preconditions(
         str(candidate.path),
     ))
 
-    play = user_data(client, candidate.item_id, users) if users else {}
-    watched = {
-        user: state for user, state in play.items()
-        if state.get("PlayCount") or state.get("PlaybackPositionTicks")
-        or state.get("Played") or state.get("IsFavorite")
-    }
-    checks.append(Check(
-        "nobody has a position in it",
-        not watched,
-        f"{len(watched)} user(s) do" if watched else f"{len(play)} user(s) checked",
-    ))
+    checks.append(_play_state_check(client, candidate.item_id, users))
 
     contents: FolderContents | None = None
     if candidate.category == "byte-identical-twin":
@@ -305,11 +308,72 @@ def _same_path(catalogued: str, manifest: Path) -> bool:
     return Path(catalogued).as_posix().casefold() == manifest.as_posix().casefold()
 
 
+def _same_file(one: Path, other: Path) -> bool:
+    """Whether two paths name one file: by the filesystem where both exist.
+
+    Where both are there the filesystem is asked, which sees through links,
+    case and a relative spelling; where either is not, the spellings are
+    compared, normalised, which is the most that can be known.
+    """
+    if one.exists() and other.exists():
+        try:
+            return os.path.samefile(one, other)
+        except OSError:
+            pass
+    return _normalised(one) == _normalised(other)
+
+
+def _normalised(path: Path) -> str:
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+
+def resolve_users(client: Client, users: Sequence[str]) -> tuple[list[str], str]:
+    """The users a play-state check reads: the ones named, or all of them.
+
+    Returns the list and, where it could not be had, why. An empty list is a
+    check that cannot pass: "0 user(s) checked" is not a pass, it is nobody
+    having been asked.
+    """
+    if users:
+        return list(users), ""
+    try:
+        found = every_user(client)
+    except Exception as exc:  # any failure here is a refusal, with its reason
+        return [], f"the user list could not be read: {exc}"
+    if not found:
+        return [], "the server listed no users, so nobody's play state was read"
+    return found, ""
+
+
+def _play_state_check(client: Client, item_id: str, users: Sequence[str]) -> Check:
+    name = "nobody has a position in it"
+    names, why_not = resolve_users(client, users)
+    if not names:
+        return Check(name, False, why_not)
+    play = user_data(client, item_id, names)
+    watched = {
+        user: state for user, state in play.items()
+        if state.get("PlayCount") or state.get("PlaybackPositionTicks")
+        or state.get("Played") or state.get("IsFavorite")
+    }
+    return Check(
+        name,
+        not watched,
+        f"{len(watched)} of {len(names)} user(s) do" if watched
+        else f"{len(names)} user(s) checked",
+    )
+
+
 def _twin_check(candidate: Candidate) -> Check:
     if candidate.keeper is None:
         return Check(
             "a twin is named and is identical", False,
             "this category needs a keeper, and the manifest names none",
+        )
+    if _same_file(candidate.path, candidate.keeper):
+        return Check(
+            "a twin is named and is identical", False,
+            f"the twin named is the candidate itself: {candidate.keeper}",
         )
     found: Identity = identical(candidate.path, candidate.keeper)
     return Check("a twin is named and is identical", found.same, str(found))
@@ -321,11 +385,29 @@ def _keeper_check(client: Client, candidate: Candidate) -> Check:
             "the kept item exists", False,
             "this category needs the identifier of what is kept instead",
         )
+    if candidate.keeper_id == candidate.item_id:
+        return Check(
+            "the kept item exists", False,
+            "the kept item named is the candidate itself",
+        )
+    if candidate.keeper is not None and _same_file(candidate.keeper, candidate.path):
+        return Check(
+            "the kept item exists", False,
+            f"the keeper named is the candidate itself: {candidate.keeper}",
+        )
     try:
         kept = fetch(client, candidate.keeper_id)
     except (ItemNotFound, LookupError) as exc:
         return Check("the kept item exists", False, str(exc))
     kept_path = Path(str(kept.get("Path") or ""))
+    if kept.get("Path") and (
+        _same_path(str(kept["Path"]), candidate.path)
+        or _same_file(kept_path, candidate.path)
+    ):
+        return Check(
+            "the kept item exists and its file is there", False,
+            f"the kept item's file is the candidate itself: {kept_path}",
+        )
     return Check(
         "the kept item exists and its file is there",
         bool(kept.get("Path")) and kept_path.is_file(),
@@ -348,14 +430,32 @@ def safe_delete(
     """Check everything, then -- if the client is not in a dry run -- park it.
 
     The order inside one candidate is the only order that is safe: park the
-    file, confirm it arrived, then remove the row. A row removed first leaves
+    file, confirm it arrived, then let the row go. A row removed first leaves
     a file that nothing in the catalogue knows about, and those are found
     years later by accident.
+
+    The row goes by telling the server the path was deleted, so that its own
+    scan drops the row whose file is missing. ``remove_rows=False`` skips the
+    notification and leaves the row for the next scheduled scan. Nothing here
+    ever asks the server to delete an item: that call removes the item's
+    whole containing folder from disk.
+
+    ``users`` names whose play state is checked; naming nobody checks every
+    user the server lists, once for the run.
     """
     released = tuple(sorted(set(allowed_categories)))
     audit_path = Path(audit) if audit is not None else None
     writer = _Audit(audit_path)
     writer.line(f"run started, categories released: {', '.join(released) or 'none'}")
+    if not users:
+        listed, why_not = resolve_users(client, users)
+        writer.line(
+            f"play state is checked for every user the server lists: {len(listed)}"
+            if listed else f"play state cannot be checked: {why_not}"
+        )
+        # Empty when the list could not be had: each candidate then asks
+        # again and fails its own check with the reason, in its own lines.
+        users = listed
 
     outcomes: list[Outcome] = []
     for candidate in candidates:
@@ -437,10 +537,12 @@ def _park_and_remove(
         )
 
     removed = False
+    row_notes: list[str] = []
     if remove_row:
-        client.request("DELETE", f"/Items/{candidate.item_id}")
-        removed = True
-        writer.line(f"{candidate.item_id} row removed")
+        removed, note = _let_the_row_go(client, candidate)
+        writer.line(f"{candidate.item_id} {note}")
+        if not removed:
+            row_notes.append(note)
     return Outcome(
         candidate=candidate,
         checks=checks,
@@ -450,9 +552,51 @@ def _park_and_remove(
         bytes_freed=size,
         notes=(
             *(contents.notes if contents is not None else ()),
+            *row_notes,
             "parked, not deleted; removing it for good is a separate decision",
         ),
     )
+
+
+def _let_the_row_go(client: Client, candidate: Candidate) -> tuple[bool, str]:
+    """Tell the server the path is gone, and see whether the row went with it.
+
+    Never ``DELETE /Items/{id}``: on this server that removes the item's
+    containing folder from disk, sidecars and neighbours included. A
+    path notification makes the server look at the path, find nothing there,
+    and drop the row itself -- and a scan deletes no files.
+    """
+    roots = _library_roots(client)
+    if roots is None:
+        return False, (
+            "row left for a scheduled scan: the library folders could not be read, "
+            "and a notification that might name one starts a full scan"
+        )
+    try:
+        notify_changed(client, [candidate.path], roots=roots, kind="Deleted")
+    except NotifyRefused as exc:
+        return False, f"row left for a scheduled scan: {exc}"
+    try:
+        fetch(client, candidate.item_id)
+    except (ItemNotFound, LookupError):
+        return True, "row removed by the server's own scan after a path notification"
+    return False, (
+        "the server was told the path is gone; the row goes when its scan gets "
+        "there, and nothing on disk is touched by that"
+    )
+
+
+def _library_roots(client: Client) -> list[str] | None:
+    """Every configured library folder, so a notification never names one."""
+    try:
+        found = client.get("/Library/VirtualFolders")
+    except Exception:  # unreadable: the caller does not notify at all
+        return None
+    roots: list[str] = []
+    for library in found if isinstance(found, list) else []:
+        if isinstance(library, dict):
+            roots += [str(p) for p in library.get("Locations") or []]
+    return roots
 
 
 @dataclass

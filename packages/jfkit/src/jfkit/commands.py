@@ -376,7 +376,8 @@ def _register_swap(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         "swap", help="put rebuilt files in their items' places, in chunks"
     )
     parser.add_argument("plan", type=Path,
-                        help="tab-separated: item_id, live path, replacement path")
+                        help="tab-separated: item_id, live path, replacement path, "
+                        "and optionally the stream count the record should show")
     parser.add_argument("--parked", type=Path, required=True)
     parser.add_argument("--chunk-gib", type=float,
                         default=swap_module.DEFAULT_CHUNK_GIB)
@@ -385,7 +386,8 @@ def _register_swap(subparsers: argparse._SubParsersAction) -> None:  # type: ign
     parser.add_argument("--rate", type=float, metavar="MIB_PER_SECOND",
                         help="observed copy rate, so the budget means something")
     parser.add_argument("--user", action="append", default=[], metavar="ID",
-                        help="a user whose play state is snapshotted and replayed")
+                        help="a user whose play state is snapshotted and replayed "
+                        "(default: every user the server lists)")
     parser.add_argument("--service", default="manual",
                         choices=["manual", "windows", "systemd"])
     add_write_arguments(parser)
@@ -397,8 +399,12 @@ def _swap(args: argparse.Namespace, config: Config) -> int:
     for line in args.plan.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        item_id, keeper, replacement = line.split("\t")[:3]
-        pairs.append(swap_module.Pair(item_id, Path(keeper), Path(replacement)))
+        fields = line.split("\t")
+        item_id, keeper, replacement = fields[:3]
+        streams = int(fields[3]) if len(fields) > 3 and fields[3].strip() else None
+        pairs.append(
+            swap_module.Pair(item_id, Path(keeper), Path(replacement), streams=streams)
+        )
     report = swap_module.swap(
         client_from(args, config), pairs,
         controller=controller_for(args.service),
@@ -419,7 +425,9 @@ def _register_delete(subparsers: argparse._SubParsersAction) -> None:  # type: i
                         help="a category somebody decided is deletable")
     parser.add_argument("--parked", type=Path, required=True)
     parser.add_argument("--backup-folders", type=Path, metavar="DIR")
-    parser.add_argument("--user", action="append", default=[], metavar="ID")
+    parser.add_argument("--user", action="append", default=[], metavar="ID",
+                        help="a user whose play state is checked "
+                        "(default: every user the server lists)")
     parser.add_argument("--audit", type=Path, metavar="PATH")
     add_write_arguments(parser)
     parser.set_defaults(handler=_delete)

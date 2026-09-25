@@ -44,7 +44,13 @@ against what the manifest asserts:
 - the catalogue's path for it is the path the manifest claims;
 - something is on disk at that path;
 - nobody -- **any** user, not the one running the tool -- has a play count, a
-  position, a "played" flag or a favourite on it;
+  position, a "played" flag or a favourite on it. With no `--user`, every
+  user the server lists (`GET /Users`) is checked; naming users narrows the
+  check to them. A user list that cannot be read, or is empty, fails this
+  check, so nothing is parked;
+- a named twin or kept item is not the candidate itself -- not the same
+  identifier, not the same file under another spelling. A file is always
+  identical to itself;
 - whatever the category requires is true right now.
 
 A manifest written last week describes a library that has since been renamed,
@@ -90,17 +96,28 @@ out to hold a second film is the clearest possible reason to stop.
 The file goes to a parking directory that keeps its layout. It stays there
 until a person decides otherwise, and deciding that is not this tool's job.
 
+The server is never asked to delete the item. On this server
+`DELETE /Items/{id}` removes the item's **containing folder** from disk --
+the file, its sidecars, its artwork, its extras and any other film that
+shares the folder -- so a tool that parked one file and then called it would
+destroy everything the parking was meant to protect. Instead the server is
+told that the parked path was deleted (`POST /Library/Media/Updated`,
+`UpdateType: Deleted`); its scan finds nothing at that path and drops the
+row, and a scan deletes no files. A notification never names a library root.
+
 "Freed" in the report means "moved out of the library", which is the number
 somebody actually wants when they are deciding whether the work is worth
 doing.
 
 ## 7. The order inside one item is the safety
 
-    park the file  ->  confirm it arrived  ->  remove the catalogue row
+    park the file  ->  confirm it arrived  ->  tell the server the path is gone
 
 In that order, every time. A row removed first leaves a file that nothing in
 the catalogue knows about, and those are found years later by accident, by
-somebody who has no idea what they are.
+somebody who has no idea what they are. The report says whether the row had
+gone by the time the run looked; where the scan has not got there yet, it
+says so, and the row goes when the scan does.
 
 Nothing is ever parked over something already parked. That earlier copy is
 the one somebody may still need.
@@ -128,7 +145,6 @@ from the dry run.
 jfkit delete manifest.tsv \
     --release byte-identical-twin --release media-free-folder \
     --parked /srv/parked --backup-folders /srv/parked/folders \
-    --user 00000000-0000-0000-0000-000000000001 \
     --audit work/deletions.log
 ```
 
@@ -138,6 +154,16 @@ jfkit delete manifest.tsv \
 item_id	path	category	keeper	reason
 00000000-0000-0000-0000-000000000003	/srv/media/movies/Blue Canyon (1998)/donor.mkv	byte-identical-twin	/srv/media/movies/Blue Canyon (1998)/keeper.mkv	same bytes, two folders
 ```
+
+No `--user`: every user the server lists is checked. Pass `--user` (more than
+once) only to narrow the check deliberately.
+
+**Only catalogued things.** Every candidate is an item with its own row whose
+catalogued path is the manifest's path. A file this tool, or `jfkit swap`,
+already parked has no row of its own -- the row it had belongs to the file
+that replaced it -- so a manifest naming it is refused on the path check,
+every time. Removing a parked file for good is a person's decision, made
+outside the toolkit.
 
 ## What is not implemented
 

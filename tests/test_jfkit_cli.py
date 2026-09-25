@@ -308,18 +308,27 @@ def test_listing_tasks_says_which_is_running(
 
 
 def test_a_swap_plan_is_read_and_reported_without_moving_anything(
-    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    configured: Path, server: tuple[str, Recorder], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _, recorder = server
     live = tmp_path / "live" / "one.mkv"
     rebuilt = tmp_path / "staging" / "one.mkv"
     live.parent.mkdir(parents=True)
     rebuilt.parent.mkdir(parents=True)
     live.write_bytes(b"old")
     rebuilt.write_bytes(b"new and longer")
+    recorder.items[0]["Path"] = str(live)
 
     plan = tmp_path / "plan.tsv"
-    plan.write_text(f"{FIRST}\t{live}\t{rebuilt}\n", encoding="utf-8")
+    plan.write_text(f"{FIRST}\t{live}\t{rebuilt}\t2\n", encoding="utf-8")
 
     assert run(configured, "swap", str(plan), "--parked", str(tmp_path / "parked")) == 0
     assert "nothing was moved" in capsys.readouterr().out
+    assert live.read_bytes() == b"old"
+
+    # the dry run reads the preconditions: a plan naming another file fails
+    recorder.items[0]["Path"] = "/srv/media/movies/Blue Canyon (1998)/keeper.mkv"
+    assert run(configured, "swap", str(plan), "--parked", str(tmp_path / "parked")) == 1
+    assert "the plan's path is not the item's" in capsys.readouterr().out
     assert live.read_bytes() == b"old"

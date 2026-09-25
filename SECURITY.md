@@ -61,7 +61,9 @@ The mitigations are part of the design, not optional flags:
 
 * a dry run is the default everywhere, and `--apply` is always explicit;
 * no command deletes anything -- a replaced file is moved to the configured
-  parked directory and left there;
+  parked directory and left there. `jfkit delete` moves a released file there
+  too and then notifies the server that its path is gone; it never calls the
+  server's item delete, which removes the item's containing folder from disk;
 * every apply writes a rollback artefact before its first write;
 * every write is followed by a verification pass that compares the result to
   the original, at stream level, inside the final container;

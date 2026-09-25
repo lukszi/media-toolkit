@@ -35,6 +35,17 @@ moved.
 `mkvkit.swap.swap()` refuses a pair whose two filenames differ, for this
 reason and no other.
 
+The same fact makes the plan's path a claim worth checking:
+
+    jfkit.swap.preflight(client, pair)
+
+Before anything stops, each plan line is read against the catalogue: the item
+is there, its catalogued path is the plan's live path (compared the way the
+deletion tool compares it), and both files exist. A line that pairs one item's
+identifier with a different file would otherwise swap that file, refresh an
+item nothing happened to, and report success. A refused pair stops the batch
+before the service is stopped for its chunk.
+
 ## 2. Nobody is watching
 
     jfkit.client.wait_idle(timeout_s=..., poll_s=...)
@@ -114,9 +125,15 @@ a check that reads once and believes it will report the *old* stream table as
 the new one -- on every item, quickly, and with no sign that anything is
 wrong.
 
-So the wait is a condition about the new file, not a sleep:
-`jfkit.swap.expected_streams(n)` is the usual one -- the record shows the
-number of streams the rebuild has.
+So the wait is a condition about the new file, not a sleep.
+`jfkit swap` polls until the record shows the stream count the plan gives for
+that item (`jfkit.swap.expected_streams(n)`, from an optional fourth plan
+column), or, where the plan gives none, until the stream table or the chapter
+list differs from the one read before the swap. A record that has not got
+there by the deadline is a **problem** in the report and a non-zero exit, not
+a pass: the comparison after it would be against the old record. A rebuild
+the server reads exactly as it read the original cannot be told apart from a
+refresh that has not run, and is reported that way rather than guessed at.
 
 ## 8. Verification is a comparison of the record
 
@@ -144,7 +161,10 @@ thing to lose.
 
 Read it for **every** user, not for the one running the tool. An
 administrator's own view of an item says nothing about the other people who
-may be halfway through it.
+may be halfway through it. With no `--user`, `jfkit swap` lists every user
+the server has (`jfkit.dto.every_user`) and snapshots each; naming users
+narrows it to those. A user list that cannot be read, or comes back empty,
+refuses the run before anything stops.
 
 ---
 
@@ -152,18 +172,22 @@ may be halfway through it.
 
 ```
 jfkit swap plan.tsv --parked /srv/parked --chunk-gib 200 \
-    --rate 180 --budget 900 --user 00000000-0000-0000-0000-000000000001
+    --rate 180 --budget 900
 ```
 
-with `plan.tsv` holding one tab-separated row per item:
+with `plan.tsv` holding one tab-separated row per item -- item, live path,
+replacement, and optionally the stream count the record should show:
 
 ```
-00000000-0000-0000-0000-000000000001	/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv	/srv/staging/keeper.mkv
+00000000-0000-0000-0000-000000000001	/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv	/srv/staging/keeper.mkv	16
 ```
 
 That is the dry run. It reports the chunking, the predicted outage per chunk
-and where every original would be parked, and it changes nothing. `--apply`
-is the same command with the writes turned on.
+and where every original would be parked, and it runs every read-only
+precondition -- the item is there, the plan's path is its catalogued path,
+both files exist, the users can be listed -- so a plan the apply would refuse
+is refused here, with a non-zero exit. It writes nothing and stops nothing.
+`--apply` is the same command with the writes turned on.
 
 ## What is not implemented
 

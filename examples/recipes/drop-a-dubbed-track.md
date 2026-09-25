@@ -167,15 +167,37 @@ filename by the refresh the swap itself triggered.
 ## 6. Afterwards
 
 The original is still at `/srv/parked/...`. Nothing in this toolkit will
-remove it. When you are confident -- a week later, after somebody has actually
-watched it -- that is a separate decision and a separate manifest:
+remove it, and `jfkit delete` is not the way to. That command only parks
+things that have a catalogue row of their own at the path its manifest names.
+The parked original has none -- the row it had now belongs to the rebuild at
+the live path -- so a manifest naming it is refused on "the catalogue's path
+is the manifest's path", every time, and naming the same item as its own
+keeper is refused as well. When you are confident -- a week later, after
+somebody has actually watched it -- deleting the parked file is a person's
+decision, made by hand, outside the toolkit.
+
+Where `jfkit delete` does belong is a donor that is still catalogued: say an
+older copy of the same film that kept its own row in another folder. That is
+a separate manifest, naming the donor's identifier and path and the kept
+item's identifier:
 
 ```
-jfkit delete parked.tsv --release rebuild-donor --parked /srv/parked \
+item_id	path	category	keeper_id	reason
+00000000-0000-0000-0000-000000000003	/srv/media/movies/The Quiet Harbour (1978) [old]/the-quiet-harbour.mkv	rebuild-donor	00000000-0000-0000-0000-000000000007	the rebuild is kept
+```
+
+```
+jfkit delete donors.tsv --release rebuild-donor --parked /srv/parked \
     --audit work/deletions.log
 ```
 
-which will refuse unless the kept item exists and its file is there.
+That is the dry run; `--apply` does it. With no `--user` it checks every user
+the server lists, and refuses if anybody has a position, a play count, a
+"played" flag or a favourite on the donor, or if the user list cannot be
+read. It refuses, too, unless the kept item exists, is not the donor itself,
+and its file is there. What passes is moved to `/srv/parked`, and the server
+is told that path is gone so that its own scan drops the row; nothing else in
+the donor's folder is touched.
 
 ---
 

@@ -19,7 +19,14 @@ precisely because they are the ones that mislead:
 * a scheduled-task list, so a maintenance pass can be made to refuse while
   the server is busy, and the two routes that start and stop one;
 * a plugin list and one plugin's configuration, so scoping a pass can be
-  tested without any plugin being installed anywhere.
+  tested without any plugin being installed anywhere;
+* a user list with more than one user in it, and a switch that makes it fail,
+  so a play-state check that consults nobody has somebody to miss;
+* the difference between the two ways a row can leave the catalogue. Deleting
+  an item removes its **containing folder from disk** -- the file, its
+  sidecars, and anything else that shares the folder -- which is what the
+  real route does. A path notification saying a file was deleted drops only
+  the row whose file is actually gone, and touches nothing on disk.
 
 Every identifier here is the all-zero fixture shape and every title is from
 the invented cast.
@@ -31,16 +38,20 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
+import tempfile
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 USER_ID = "00000000-0000-0000-0000-000000000001"
 SECOND_USER_ID = "00000000-0000-0000-0000-000000000002"
+THIRD_USER_ID = "00000000-0000-0000-0000-000000000003"
 FIXTURE_CREDENTIAL = "a-fixture-value-not-a-real-token"
 
 TICKS_PER_SECOND = 10_000_000
@@ -157,6 +168,22 @@ class Recorder:
     #: what a refresh changes once it has caught up
     refresh_effect: dict[str, dict[str, Any]] = field(default_factory=dict)
     reads: list[str] = field(default_factory=list)
+    #: what the user list answers with, and a status that makes it fail instead
+    users: list[dict[str, Any]] = field(default_factory=lambda: [
+        {"Id": USER_ID, "Name": "first-fixture-user"},
+        {"Id": SECOND_USER_ID, "Name": "second-fixture-user"},
+        {"Id": THIRD_USER_ID, "Name": "third-fixture-user"},
+    ])
+    users_status: int | None = None
+    #: folders an item delete removed from disk, as the real route does
+    folders_deleted: list[str] = field(default_factory=list)
+    #: rows a deleted-path notification dropped because their file was gone
+    removed_by_scan: list[str] = field(default_factory=list)
+    #: an item delete only removes folders below this, so a fixture path can
+    #: never reach anything outside the test's own temporary tree
+    disk_root: Path = field(
+        default_factory=lambda: Path(tempfile.gettempdir()).resolve()
+    )
 
     def find(self, item_id: str) -> dict[str, Any] | None:
         for item in self.items:
@@ -220,6 +247,12 @@ class _Handler(BaseHTTPRequestHandler):
         if route == "/Sessions":
             self._send(200, self.recorder.sessions)
             return
+        if route == "/Users":
+            if self.recorder.users_status is not None:
+                self._send(self.recorder.users_status, {"error": "not now"})
+            else:
+                self._send(200, self.recorder.users)
+            return
         if route == "/flaky":
             self.recorder.flaky_calls += 1
             if self.recorder.flaky_calls <= self.recorder.flaky_failures:
@@ -270,7 +303,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._write_library_options(body or {})
             return
         if route == "/Library/Media/Updated":
-            self.recorder.notifications += list((body or {}).get("Updates") or [])
+            updates = list((body or {}).get("Updates") or [])
+            self.recorder.notifications += updates
+            for update in updates:
+                if update.get("UpdateType") == "Deleted":
+                    self._scan_deleted(str(update.get("Path") or ""))
             self._send(204)
             return
         if route.startswith("/Items/RemoteSearch/Apply/"):
@@ -309,9 +346,46 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self.recorder.items.remove(found)
             self.recorder.deleted.append(item_id)
+            self._delete_containing_folder(str(found.get("Path") or ""))
             self._send(204)
             return
         self._send(404, {"error": "no such route"})
+
+    # ---------------------------------------------------------- the two removals
+    def _delete_containing_folder(self, raw: str) -> None:
+        """What deleting an item does on the real server: the whole folder goes.
+
+        Not the file -- the folder the file is in, with every sidecar, poster,
+        extra and neighbouring film. Done for real below the test's temporary
+        tree, so a test that reaches this route sees the collateral loss
+        rather than a line in a list.
+        """
+        if not raw:
+            return
+        path = Path(raw)
+        folder = path if path.is_dir() else path.parent
+        self.recorder.folders_deleted.append(str(folder))
+        try:
+            inside = folder.resolve().is_relative_to(self.recorder.disk_root)
+        except OSError:
+            inside = False
+        if inside and folder.resolve() != self.recorder.disk_root and folder.exists():
+            shutil.rmtree(folder)
+
+    def _scan_deleted(self, raw: str) -> None:
+        """A deleted-path notification: the scan drops rows whose file is gone.
+
+        A row whose file is still there stays, and nothing on disk is touched,
+        which is the whole difference from deleting the item.
+        """
+        if not raw:
+            return
+        gone = PurePathLike(raw)
+        for item in list(self.recorder.items):
+            path = str(item.get("Path") or "")
+            if path and PurePathLike(path).within(gone) and not Path(path).exists():
+                self.recorder.items.remove(item)
+                self.recorder.removed_by_scan.append(str(item["Id"]))
 
     # ------------------------------------------------------------------ actions
     def _update_item(self, item_id: str, body: dict[str, Any]) -> None:
@@ -375,6 +449,16 @@ class _Handler(BaseHTTPRequestHandler):
         start = int(query.get("startIndex", ["0"])[0])
         limit = int(query.get("limit", ["500"])[0])
         return {"Items": rows[start:start + limit], "TotalRecordCount": len(rows)}
+
+
+class PurePathLike:
+    """A path compared the way the server compares one: spelling, not the disk."""
+
+    def __init__(self, raw: str) -> None:
+        self.key = Path(raw).as_posix().casefold().rstrip("/")
+
+    def within(self, other: PurePathLike) -> bool:
+        return self.key == other.key or self.key.startswith(other.key + "/")
 
 
 def write_options_document(path: Any, values: dict[str, Any]) -> None:

@@ -2,7 +2,10 @@
 
 Nothing here is deleted -- that is the module's whole point, and it is what
 the tests check. A candidate that passes every precondition is *moved* to a
-parking directory, and the catalogue row is removed afterwards, in that order.
+parking directory, and the catalogue row goes afterwards, in that order -- by
+telling the server the path is gone, never by asking it to delete the item,
+which on the real server takes the item's whole folder with it. The stand-in
+models that, so a test that reached the item delete would lose files.
 
 The three worth reading: a category nobody released is refused with its name
 in the message; a manifest whose path has gone stale is refused rather than
@@ -36,6 +39,7 @@ from jfkit.safedelete.evidence import (
 from tests.fake_server import (
     ITEMS,
     SECOND_USER_ID,
+    THIRD_USER_ID,
     USER_ID,
     Recorder,
     client_for,
@@ -305,7 +309,9 @@ def test_an_allowed_candidate_is_moved_and_then_the_row_goes(
     outcome = report.allowed[0]
     assert outcome.parked is not None and outcome.parked.is_file()
     assert not (tree / "one" / "one.mkv").exists()
-    assert recorder.deleted == [FIRST]
+    assert recorder.removed_by_scan == [FIRST]
+    assert outcome.row_removed
+    assert recorder.find(FIRST) is None
     assert outcome.bytes_freed == len(b"the same bytes")
 
     log_lines = (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
@@ -410,3 +416,238 @@ def test_the_audit_is_appended_to_and_not_replaced(
             allowed_categories=[], parked=tmp_path / "parked", audit=audit,
         )
     assert audit.read_text(encoding="utf-8").count("run started") == 2
+
+
+# ------------------------------------------------ the row, and nothing else
+def test_apply_never_asks_the_server_to_delete_an_item(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """The item delete removes the containing folder on the real server."""
+    url, recorder = server
+    safe_delete(
+        client_for(url, dry_run=False), [candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+    )
+    assert not [r for r in recorder.requests if r[0] == "DELETE"]
+    assert recorder.deleted == [] and recorder.folders_deleted == []
+
+
+def test_everything_else_in_the_folder_survives_the_apply(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """Sidecars, artwork, and a different film that shares the folder."""
+    url, _ = server
+    folder = tree / "one"
+    (folder / "one.srt").write_text("1\n", encoding="utf-8")
+    (folder / "poster.jpg").write_bytes(b"artwork")
+    (folder / "another-film.mkv").write_bytes(b"a different item")
+
+    report = safe_delete(
+        client_for(url, dry_run=False), [candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+    )
+    assert report.allowed and report.allowed[0].parked is not None
+    assert (folder / "one.srt").read_text(encoding="utf-8") == "1\n"
+    assert (folder / "poster.jpg").read_bytes() == b"artwork"
+    assert (folder / "another-film.mkv").read_bytes() == b"a different item"
+    assert (tree / "two" / "two.mkv").is_file(), "the twin is untouched"
+
+
+def test_the_row_goes_through_a_deleted_path_notification(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    url, recorder = server
+    safe_delete(
+        client_for(url, dry_run=False), [candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+    )
+    assert recorder.notifications == [
+        {"Path": str(tree / "one" / "one.mkv"), "UpdateType": "Deleted"}
+    ]
+    assert recorder.removed_by_scan == [FIRST]
+    assert recorder.find(SECOND) is not None, "the kept twin's row stays"
+
+
+def test_the_stand_in_item_delete_really_takes_the_folder(
+    server: tuple[str, Recorder], tree: Path
+) -> None:
+    """The model the tests above rely on: this is what the old call did."""
+    url, recorder = server
+    (tree / "one" / "one.srt").write_text("1\n", encoding="utf-8")
+    client_for(url, dry_run=False).request("DELETE", f"/Items/{FIRST}")
+    assert recorder.folders_deleted == [str(tree / "one")]
+    assert not (tree / "one").exists()
+
+
+def test_a_notification_does_not_drop_a_row_whose_file_is_still_there(
+    server: tuple[str, Recorder], tree: Path
+) -> None:
+    url, recorder = server
+    client_for(url, dry_run=False).post(
+        "/Library/Media/Updated",
+        {"Updates": [{"Path": str(tree / "one" / "one.mkv"), "UpdateType": "Deleted"}]},
+    )
+    assert recorder.removed_by_scan == []
+    assert recorder.find(FIRST) is not None
+    assert (tree / "one" / "one.mkv").is_file()
+
+
+def test_a_library_root_is_never_named_in_the_notification(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """A folder candidate that is a library root would start a full scan."""
+    url, recorder = server
+    leftovers = tree / "leftovers"
+    leftovers.mkdir()
+    (leftovers / "poster.jpg").write_bytes(b"x")
+    recorder.items[0]["Path"] = str(leftovers)
+    recorder.virtual_folders = [{"Name": "Movies", "Locations": [str(leftovers)]}]
+
+    report = safe_delete(
+        client_for(url, dry_run=False),
+        [Candidate(item_id=FIRST, path=leftovers, category="media-free-folder")],
+        allowed_categories=["media-free-folder"], parked=tmp_path / "parked",
+    )
+    assert recorder.notifications == []
+    assert not report.allowed[0].row_removed
+    assert any("scheduled scan" in note for note in report.allowed[0].notes)
+
+
+# ------------------------------------------------------ everybody's position
+def test_naming_nobody_checks_every_user_the_server_has(
+    server: tuple[str, Recorder], tree: Path
+) -> None:
+    url, recorder = server
+    checks, _ = preconditions(
+        client_for(url), candidate(tree), allowed_categories=["byte-identical-twin"]
+    )
+    play = next(c for c in checks if c.name == "nobody has a position in it")
+    assert play.ok and play.detail == "3 user(s) checked"
+    read = {route for _method, route in recorder.requests}
+    for user in (USER_ID, SECOND_USER_ID, THIRD_USER_ID):
+        assert f"/Users/{user}/Items/{FIRST}" in read
+
+
+def test_a_position_nobody_named_still_refuses_the_apply(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """The operator named nobody; the third user is half-way through it."""
+    url, recorder = server
+    recorder.user_data[(THIRD_USER_ID, FIRST)] = {
+        "PlayCount": 0, "PlaybackPositionTicks": 12_000, "Played": False
+    }
+    report = safe_delete(
+        client_for(url, dry_run=False), [candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+    )
+    assert report.refused and not report.allowed
+    assert "1 of 3 user(s) do" in str(report)
+    assert (tree / "one" / "one.mkv").is_file()
+    assert recorder.notifications == [] and recorder.find(FIRST) is not None
+
+
+@pytest.mark.parametrize("broken", ["empty", "failing"])
+def test_a_user_list_that_cannot_be_had_refuses_the_apply(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path, broken: str
+) -> None:
+    url, recorder = server
+    if broken == "empty":
+        recorder.users = []
+    else:
+        recorder.users_status = 500
+    report = safe_delete(
+        client_for(url, dry_run=False), [candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+        audit=tmp_path / "audit.log",
+    )
+    assert report.refused and not report.allowed
+    refusal = next(c for c in report.refused[0].refusals
+                   if c.name == "nobody has a position in it")
+    assert "user" in refusal.detail
+    assert (tree / "one" / "one.mkv").is_file()
+    assert not (tmp_path / "parked").exists()
+    assert recorder.notifications == []
+    assert "play state cannot be checked" in (tmp_path / "audit.log").read_text(
+        encoding="utf-8"
+    )
+
+
+# ------------------------------------------------ the keeper is not the candidate
+def test_a_twin_that_is_the_candidate_itself_is_refused(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """Every byte of a file is identical to itself; that is not a twin."""
+    url, _ = server
+    same = tree / "one" / "one.mkv"
+    report = safe_delete(
+        client_for(url, dry_run=False), [candidate(tree, keeper=same)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+    )
+    assert report.refused and not report.allowed
+    assert "the candidate itself" in str(report)
+    assert same.is_file()
+
+
+def test_a_twin_spelled_differently_but_the_same_file_is_refused(
+    server: tuple[str, Recorder], tree: Path
+) -> None:
+    url, _ = server
+    roundabout = tree / "two" / ".." / "one" / "one.mkv"
+    checks, _ = preconditions(
+        client_for(url), candidate(tree, keeper=roundabout),
+        allowed_categories=["byte-identical-twin"],
+    )
+    assert any(not c.ok and "the candidate itself" in c.detail for c in checks)
+
+
+@pytest.mark.parametrize("category", ["superseded-copy", "rebuild-donor"])
+def test_a_kept_item_that_is_the_candidate_itself_is_refused(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path, category: str
+) -> None:
+    url, _ = server
+    report = safe_delete(
+        client_for(url, dry_run=False),
+        [candidate(tree, category=category, keeper=None, keeper_id=FIRST)],
+        allowed_categories=[category], parked=tmp_path / "parked",
+    )
+    assert report.refused and not report.allowed
+    assert "the candidate itself" in str(report)
+    assert (tree / "one" / "one.mkv").is_file()
+
+
+def test_a_kept_item_whose_file_is_the_candidates_is_refused(
+    server: tuple[str, Recorder], tree: Path
+) -> None:
+    """Two rows, one file: keeping the other row keeps nothing."""
+    url, recorder = server
+    recorder.items[1]["Path"] = str(tree / "one" / "one.mkv")
+    checks, _ = preconditions(
+        client_for(url),
+        candidate(tree, category="superseded-copy", keeper=None, keeper_id=SECOND),
+        allowed_categories=["superseded-copy"],
+    )
+    assert any(not c.ok and "the candidate itself" in c.detail for c in checks)
+
+
+def test_a_file_a_swap_parked_is_refused_every_time(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """The recipe's afterwards step: a parked original has no row of its own.
+
+    The row it had belongs to the rebuild now at the live path, so the path
+    check fails however the manifest names the kept item.
+    """
+    url, _ = server
+    parked_original = tmp_path / "parked" / "one.mkv"
+    parked_original.parent.mkdir(parents=True)
+    parked_original.write_bytes(b"the original")
+    for keeper_id in (FIRST, SECOND):
+        report = safe_delete(
+            client_for(url, dry_run=False),
+            [Candidate(item_id=FIRST, path=parked_original, category="rebuild-donor",
+                       keeper_id=keeper_id)],
+            allowed_categories=["rebuild-donor"], parked=tmp_path / "again",
+        )
+        assert report.refused and not report.allowed
+        assert "the catalogue's path is the manifest's path" in str(report)
+    assert parked_original.read_bytes() == b"the original"

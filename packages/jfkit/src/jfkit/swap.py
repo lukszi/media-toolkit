@@ -10,6 +10,11 @@ a new name and it is a new item: new identifier, no play state, no place in
 anybody's list, and the old item is a missing file. Swap in place and every
 reference in the catalogue still points at the same row.
 
+**The plan names the file the catalogue names.** A plan line is checked
+against the item's catalogued path before anything stops: a line that pairs
+one item's identifier with another file would otherwise swap that file,
+refresh the item nothing happened to, and report success.
+
 **Nobody is watching.** Stopping a server under somebody's playback is the
 failure people remember, and it costs one call to avoid.
 
@@ -19,16 +24,22 @@ same number of files and two very different outages. A chunk carries a
 byte total, and where a copy rate is known the downtime it implies is
 computed and compared against a budget *before* the service goes down.
 
-**Play state is snapshotted for every user and replayed afterwards.** It
-usually survives -- the row is not deleted, so nothing has to reattach -- but
-"usually" is not a thing to find out about afterwards, and a position belonging
-to somebody who was not consulted is not a thing to lose.
+**Play state is snapshotted for every user and replayed afterwards.** Every
+user the server lists, unless the caller names some; a server whose user list
+cannot be read is not swapped against. It usually survives -- the row is not
+deleted, so nothing has to reattach -- but "usually" is not a thing to find out
+about afterwards, and a position belonging to somebody who was not consulted
+is not a thing to lose.
 
 **Verification is a comparison, not a size check.** A rebuilt file
 legitimately has a different size; that is generally why it was rebuilt. What
 proves the swap is the record afterwards: the identifier is the same, the
 stream table is the one the rebuild has, and the name, overview and provider
-identifiers are exactly what they were.
+identifiers are exactly what they were. The record is polled until it shows
+something true of the new file only -- a stream count the plan gives, or else
+a stream table or chapter list that differs from the one before -- and a
+record that never gets there is a problem, not a pass: the first read after a
+refresh is usually the record from before it.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
@@ -46,7 +57,9 @@ from mkvkit import swap as file_swap
 
 from .client import Client
 from .dto import Comparison, compare, fetch, user_data
+from .errors import ItemNotFound
 from .refresh import RefreshReport, safe_refresh
+from .safedelete import _same_path, resolve_users
 from .service import ServiceController, stopped
 
 __all__ = [
@@ -56,6 +69,7 @@ __all__ = [
     "SwapReport",
     "chunks",
     "expected_streams",
+    "preflight",
     "replay_play_state",
     "swap",
 ]
@@ -78,6 +92,9 @@ class Pair:
     item_id: str
     keeper: Path
     replacement: Path
+    #: how many streams the record shows once the refresh has caught up, where
+    #: the plan knows; otherwise any change to the stream table or chapters
+    streams: int | None = None
 
     @property
     def size(self) -> int:
@@ -230,6 +247,55 @@ def expected_streams(count: int) -> Callable[[Mapping[str, Any]], bool]:
     return settled
 
 
+def _settle_condition(
+    pair: Pair, before: Mapping[str, Any]
+) -> Callable[[Mapping[str, Any]], bool]:
+    """The plan's stream count where it has one; otherwise "not the old record".
+
+    A rebuild whose stream table and chapters the server reads exactly as it
+    read the original's cannot be told apart from a refresh that has not run,
+    and is reported as unsettled rather than guessed to be fine.
+    """
+    if pair.streams is not None:
+        return expected_streams(pair.streams)
+    streams, chapters = before.get("MediaStreams"), before.get("Chapters")
+
+    def changed(item: Mapping[str, Any]) -> bool:
+        return item.get("MediaStreams") != streams or item.get("Chapters") != chapters
+
+    return changed
+
+
+# ------------------------------------------------------------- preconditions
+def preflight(client: Client, pair: Pair) -> tuple[list[str], dict[str, Any] | None]:
+    """Every read-only check for one pair: what would stop it, and the record.
+
+    Run by the dry run as well as before each outage, and never writes. The
+    catalogued path is compared the way the deletion tool compares it, before
+    the service is stopped: a plan line that pairs an identifier with a file
+    that is not that item's would otherwise swap the wrong file and report
+    success, because the item it names was never touched.
+    """
+    problems: list[str] = []
+    record: dict[str, Any] | None = None
+    try:
+        record = fetch(client, pair.item_id)
+    except (ItemNotFound, LookupError) as exc:
+        problems.append(f"refused: the item is not in the catalogue ({exc})")
+    if record is not None:
+        catalogued = str(record.get("Path") or "")
+        if not _same_path(catalogued, pair.keeper):
+            problems.append(
+                f"refused: the plan's path is not the item's -- the catalogue says "
+                f"{catalogued!r}, the plan says {str(pair.keeper)!r}"
+            )
+    if not pair.keeper.is_file():
+        problems.append(f"refused: nothing is on disk at {pair.keeper}")
+    if not pair.replacement.is_file():
+        problems.append(f"refused: the replacement is not there: {pair.replacement}")
+    return problems, record
+
+
 # -------------------------------------------------------------- play state
 def replay_play_state(
     client: Client,
@@ -279,10 +345,16 @@ def swap(
     because the right check for an audio-only rebuild is not the right check
     for a full remux.
 
+    ``users`` names whose play state is snapshotted and replayed; naming
+    nobody means every user the server lists. A user list that cannot be read,
+    or is empty, refuses the whole run before anything stops.
+
     Dry run unless the client says otherwise, and the dry run is worth
     running: it reports the chunking, the estimated downtime and where every
-    original would be parked, which is the part that is worth checking while
-    nothing is at stake.
+    original would be parked, and it runs every read-only precondition -- the
+    item is there, the plan's path is its path, both files exist, the users
+    can be listed -- so a plan that would be refused is refused while nothing
+    is at stake.
     """
     planned = chunks(
         pairs, chunk_gib=chunk_gib, mib_per_second=mib_per_second, budget_s=budget_s
@@ -294,15 +366,38 @@ def swap(
                 f"{chunk}: about {chunk.estimated_seconds(mib_per_second) / 60:.0f} "
                 "minute(s) of copying"
             )
+    names, why_not = resolve_users(client, users)
+    no_users = () if names else (f"refused: {why_not}",)
+
     if client.dry_run:
+        playing = len(client.playing())
+        if playing:
+            notes.append(
+                f"{playing} session(s) playing now; an applied run waits for them"
+            )
         return SwapReport(
             chunks=tuple(planned),
             outcomes=tuple(
-                Outcome(pair, parked=file_swap.parked_path(pair.keeper, Path(parked)))
+                Outcome(
+                    pair, parked=file_swap.parked_path(pair.keeper, Path(parked)),
+                    problems=(*preflight(client, pair)[0], *no_users),
+                )
                 for chunk in planned for pair in chunk.pairs
             ),
             applied=False,
-            notes=(*notes, "dry run: nothing was moved and nothing was stopped"),
+            notes=(*notes, "dry run: every precondition was read; nothing was "
+                   "moved and nothing was stopped"),
+        )
+
+    if not names:
+        return SwapReport(
+            chunks=tuple(planned),
+            outcomes=tuple(
+                Outcome(pair, problems=no_users)
+                for chunk in planned for pair in chunk.pairs
+            ),
+            applied=True,
+            notes=(*notes, "nothing was stopped: whose play state to keep is unknown"),
         )
 
     outcomes: list[Outcome] = []
@@ -313,14 +408,28 @@ def swap(
 
         before: dict[str, dict[str, Any]] = {}
         play_state: dict[str, Mapping[str, Mapping[str, Any]]] = {}
+        ready: list[Pair] = []
         for pair in chunk.pairs:
-            before[pair.item_id] = fetch(client, pair.item_id)
-            play_state[pair.item_id] = user_data(client, pair.item_id, users)
+            problems, record = preflight(client, pair)
+            if problems or record is None:
+                outcomes.append(Outcome(pair, problems=tuple(problems)))
+                continue
+            before[pair.item_id] = record
+            play_state[pair.item_id] = user_data(client, pair.item_id, names)
+            ready.append(pair)
+        if len(ready) < len(chunk.pairs) and stop_on_problem:
+            notes.append(
+                f"stopped before chunk {chunk.index}: a pair in it was refused, and "
+                "the service was not stopped for any of it"
+            )
+            break
+        if not ready:
+            continue
 
         started = time.monotonic()
         results: dict[str, file_swap.SwapResult] = {}
         with stopped(controller):
-            for pair in chunk.pairs:
+            for pair in ready:
                 results[pair.item_id] = file_swap.swap(
                     pair.as_file_pair(), parked_dir=parked, dry_run=False,
                     check=check,
@@ -329,7 +438,7 @@ def swap(
         log.info("chunk %d: service down %.0fs", chunk.index, downtime[chunk.index])
 
         stop = False
-        for pair in chunk.pairs:
+        for pair in ready:
             result = results[pair.item_id]
             if not result.ok or not result.applied:
                 outcomes.append(
@@ -375,6 +484,7 @@ def _verify(
     report = safe_refresh(
         client, pair.item_id,
         expected_changes=EXPECTED,
+        until=_settle_condition(pair, before),
         before=before,
         timeout_s=settle_timeout_s,
         poll_s=poll_s,
@@ -389,8 +499,8 @@ def _verify(
         )
     if not report.settled:
         problems.append(
-            "the catalogue had not caught up before the deadline; the comparison "
-            "below may be against the record from before the swap"
+            "the catalogue had not caught up before the deadline: the record never "
+            "showed the new file's streams, so nothing below proves the swap"
         )
     restored = replay_play_state(client, pair.item_id, play_state)
     return Outcome(

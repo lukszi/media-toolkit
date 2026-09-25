@@ -7,6 +7,37 @@ day the work was done.
 
 ### Fixed
 
+- **`jfkit delete --apply` no longer asks the server to delete the item.**
+  After parking a file it called `DELETE /Items/{id}`, which on this server
+  removes the item's *containing folder* from disk -- sidecars, artwork,
+  extras and any other film in the same folder -- and nothing could turn it
+  off. The row now goes by telling the server the parked path was deleted
+  (`POST /Library/Media/Updated`, `UpdateType: Deleted`); its scan drops the
+  row whose file is gone and deletes nothing. A notification never names a
+  library root, and the report says when the row had not gone yet. The test
+  stand-in now models the item delete as the folder delete it is, so a test
+  that reached it would lose files.
+- **The play-state check consults everybody by default.** With no `--user`,
+  `jfkit delete` checked nobody and passed with "0 user(s) checked", and
+  `jfkit swap` snapshotted nobody. Both now list every user the server has
+  (`jfkit.dto.every_user`, `GET /Users`) and check each; a user list that
+  cannot be read, or is empty, refuses the apply.
+- **A twin or kept item that is the candidate itself is refused.** A file is
+  byte-identical to itself, so a manifest naming the candidate as its own
+  twin -- or its own item as the kept one, or a kept item whose file is the
+  candidate's -- passed every check.
+- **`jfkit swap` waits for the record to show the new file.** Verification
+  took the first read after the refresh, usually the record from before the
+  swap, and reported success against it. It now polls until the stream count
+  the plan gives (an optional fourth plan column) or, failing that, a changed
+  stream table or chapter list; a record that never gets there is a problem
+  and a non-zero exit.
+- **`jfkit swap` checks the plan's path against the item's catalogued path**
+  before stopping the service. A plan line pairing one item's identifier with
+  another file used to swap that file and report success.
+- **The `jfkit swap` dry run reads every precondition.** It skipped them all;
+  it now reports a missing item, a path mismatch, a missing file and an
+  unreadable user list, and exits non-zero, without writing anything.
 - **An applied database pass is refused when it has nowhere to put the copy
   it takes first.** `maintenance.run_operations()` documented the copy as a
   standing step of every applied run -- stop, copy, apply, restart, count --
