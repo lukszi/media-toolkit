@@ -133,7 +133,9 @@ makes later, with the evidence in front of them.
 
 Every function here that writes takes `dry_run=True` by default and every
 command takes `--dry-run` (the default) and `--apply`. No environment variable
-flips it, no configuration key weakens it, and no "force" exists.
+flips it, and no configuration key weakens it. The one `--force` there is
+lets `chapters match --out` or `chapters rollback --out` replace a document it
+wrote earlier; nothing lets a write skip the dry run.
 
 The dry run is not a cut-down path: it produces the same plan, the same
 command, the same rollback and the same refusals as the real run, and then

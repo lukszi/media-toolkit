@@ -33,7 +33,8 @@ class ExtraRequired(ImportError):
         self.package = package
         super().__init__(
             f"{module} is needed for this and is not installed. "
-            f'Install it with:  pip install "{package}[{extra}]"'
+            "Install the extra from the repository (the packages are not on "
+            f'PyPI):  pip install -e "packages/{package}[{extra}]" in a checkout'
         )
 
 

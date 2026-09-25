@@ -136,15 +136,22 @@ keeper.mkv -> /srv/staging/keeper.mkv
   track 4 (ita): drop -- ita is droppable and is not the original language
   track 5 (spa): drop -- spa is droppable and is not the original language
   built /srv/staging/keeper.mkv
-  now verify it:  mkvkit verify /srv/media/movies/The Quiet Harbour (1978)/keeper.mkv /srv/staging/keeper.mkv --dropped 3,4,5
+  verifying:  mkvkit verify "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" /srv/staging/keeper.mkv --dropped 3,4,5
+  PASS (tracks dropped): 16 stream(s) compared by hash
+    note: 24 tag value(s) belonged to tracks that are not in the new file and went with them
 ```
 
-The rebuild prints the verify command for what it just built, with the dropped
-streams already filled in, because that is the step people skip. It prints the
-paths as they are, unquoted: put the quotes back around a path with spaces or
-parentheses in it before running the line.
+The rebuild is not finished until it has been compared with its source, so
+`remux --apply` runs that comparison itself: both files, one hash per stream,
+against the plan's own declaration of what changed. A rebuild that does not
+verify exits 1, stays in staging, and must not be swapped in. The command line
+it prints is the stand-alone form of the same check, quoted and with the
+dropped streams filled in.
 
 ## 3. Prove the difference is the one you asked for
+
+The rebuild already did this once. Doing it again by hand, later, is how you
+check a staged file nobody has touched since:
 
 ```
 mkvkit verify "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
@@ -167,10 +174,11 @@ sixteen streams that were kept hash identically on both sides.
 ## 4. Swap it in
 
 ```
-jfkit swap plan.tsv --parked /srv/parked --rate 180 --budget 300 \
-    --user 00000000-0000-0000-0000-000000000001 \
-    --user 00000000-0000-0000-0000-000000000002
+jfkit swap plan.tsv --parked /srv/parked --rate 180 --budget 300
 ```
+
+With no `--user`, every user the server lists is snapshotted and put back; a
+user list that cannot be read refuses the whole run before anything stops.
 
 with `plan.tsv`:
 
@@ -189,7 +197,7 @@ The dry run first, which is what that command is:
 1 chunk(s), 1 pair(s): dry run, nothing moved; 0 swapped
   chunk 1: 1 file(s), 22.1 GiB
   note: chunk 1: about 2 minute(s) of copying
-  note: dry run: nothing was moved and nothing was stopped
+  note: dry run: every precondition was read; nothing was moved and nothing was stopped
 ```
 
 Two minutes of outage for one film. Acceptable. Add `--apply`:
@@ -214,7 +222,7 @@ before and after.
 
 ```
 00000000-0000-0000-0000-000000000007: swapped
-  play state put back for 0 user(s)
+  play state put back for 2 user(s)
   nothing else moved
 ```
 

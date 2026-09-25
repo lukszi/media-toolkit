@@ -12,7 +12,6 @@ git clone https://github.com/lukszi/media-toolkit
 cd media-toolkit
 pip install -e packages/mkvkit
 pip install -e "packages/mkvkit[langid]"    # spoken-language identification
-pip install -e "packages/mkvkit[align]"     # the numeric half, without a speech model
 ```
 
 or without a checkout:

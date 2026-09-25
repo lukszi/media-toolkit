@@ -14,7 +14,7 @@
 # one message rather than one traceback at a time.
 
 [server]
-url = "http://127.0.0.1:8096"
+url = "http://127.0.0.1:8096"   # no user or password in the address: refused
 
 # The token is NEVER a value in this file. Name the variable that holds it...
 token_env = "JFKIT_TOKEN"
@@ -63,6 +63,8 @@ default_audio = "eng"
 [langid]
 model = "large-v3"
 device = "auto"                   # auto, cpu or cuda
+# model_dir = "./work/models"    # where the speech model is cached; the
+                                 # library default when unset
 
 # The settle bar. These two were fitted against one collection and are
 # defaults, not universals; the method document explains how to re-fit them.

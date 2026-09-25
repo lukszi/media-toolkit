@@ -47,13 +47,20 @@ point rather than left to each module.
 
 ## The gate
 
-Every change is scanned before it is merged, and the whole history of this
-repository was produced under the same scan: the working tree, every commit
-message, every patch and every reachable object. It looks for *shapes* rather
-than for a list somebody remembered -- an absolute path, a drive letter, a
-profile directory, a host name, an e-mail address, an identifier that could be
-a real item id or key, a release-name-shaped token -- so a value nobody
-thought to list still trips it.
+Every pull request is scanned before it is merged, and every push is scanned
+when it lands (see `CONTRIBUTING.md` for exactly which commits each run
+covers). The whole history of this repository was produced under the same
+scan: the working tree, every commit message, every patch and every reachable
+object. It looks for *shapes* rather than for a list somebody remembered -- an
+absolute path, a drive letter, a profile directory, a bare address, a host name
+or URL that is not loopback, a reserved example name or a public project host,
+an e-mail address, an identifier that could be a real item id or key, a
+release-name-shaped token -- so a value nobody thought to list still trips it.
+
+Commit headers are not content, so they get a check of their own: every author
+and every committer on every commit is the one published identity, and
+`python tests/deny_scan.py --identities HEAD` fails on anything else. CI runs
+it over the whole history on every event.
 
 The gate has its own test, which plants findings and requires them to be
 caught. A gate that has never failed is not known to work.
@@ -71,9 +78,24 @@ The mitigations are part of the design, not optional flags:
   parked directory and left there. `jfkit delete` moves a released file there
   too and then notifies the server that its path is gone; it never calls the
   server's item delete, which removes the item's containing folder from disk;
-* every apply writes a rollback artefact before its first write;
-* every write is followed by a verification pass that compares the result to
-  the original, at stream level, inside the final container;
+* every apply that changes an existing file, record or database writes its
+  rollback artefact before its first write, and does not run when it cannot:
+  `mkvkit propedit`, `chapters apply` and `chapters plan` (`--rollback-dir`,
+  default `<[paths].work>/rollback`), `jfkit item set` (`--backup`),
+  `libopts set` and `segments scope` (`--backup-dir`) and `maintenance run`
+  (`--snapshot-dir`). A rebuild never writes its source, a swap's rollback is
+  the parked original, a preview restore only adds what is missing, and a
+  refresh, a path notification or a scan cancel asks the server to do work and
+  has nothing to roll back;
+* what is verified after a write, exactly: `mkvkit remux --apply` hashes every
+  stream of both files and compares them against the rebuild's own plan before
+  it exits; a header edit (`propedit`, `chapters apply`, `chapters plan`)
+  re-reads the file and compares it track by track -- header level, because a
+  header editor cannot move a packet; `mkvkit swap` re-reads the arrived file
+  for its track count and container type (run `mkvkit verify` against the
+  original for the stream-level proof); `jfkit swap` waits for the server's
+  record to settle and compares it with the one before; `jfkit delete` re-reads
+  the catalogue after the file is parked;
 * a container whose type is not what its extension claims is refused rather
   than edited, because the header editor would otherwise report success while
   changing nothing.

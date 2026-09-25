@@ -86,9 +86,11 @@ reading the diff. Both halves apply to every changed file.
 ## Dry run and apply
 
 Every command that modifies a file or a server record takes `--dry-run`
-(the default) and `--apply`. Every apply writes its rollback artefact before
-it writes anything else. A change that adds a writing path without both is not
-merged.
+(the default) and `--apply`. Every apply that changes an existing file, record
+or database writes its rollback artefact before it writes anything else, and
+refuses to run when it cannot (`SECURITY.md` lists them, and the verbs whose
+rollback is the parked original or that change nothing that exists). A change
+that adds a writing path without both is not merged.
 
 ## Tests
 

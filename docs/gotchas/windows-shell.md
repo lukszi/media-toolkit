@@ -169,9 +169,10 @@ the console does, and it cannot represent most of what is in a media library.
 **Fix.** Set `PYTHONIOENCODING=utf-8` in the environment of anything that
 prints. For a detached job, set it in the job's own environment rather than in
 your session, because your session is not where it will run. Nothing in this
-repository sets it for you: `jfkit.jobs.detached_command()` passes a job's
-program and arguments through untouched and adds no environment of its own,
-which is a deliberate choice and a sharp edge.
+repository sets it for you. A `Job` can carry an environment, and the unit
+form passes it on; the scheduled-task form cannot carry one and refuses a job
+that has one, so on Windows set it in the launcher the task runs (a wrapper
+script, or the program's own configuration) rather than in the job.
 
 **Confirmed.** The same script, the same input, with and without the variable.
 
