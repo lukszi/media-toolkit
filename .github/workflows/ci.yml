@@ -32,6 +32,10 @@ jobs:
         run: python tests/deny_scan.py --canary
       - name: scan the tree
         run: python tests/deny_scan.py --tree .
+      # Commit headers are not content, so no content rule reads them: every
+      # author and committer on every commit must be the published identity.
+      - name: every author and committer, over the whole history
+        run: python tests/deny_scan.py --identities HEAD
       # A pull request is scanned from its base, a push from the commit the
       # branch pointed at before it. A push with no usable "before" -- the
       # first push of a branch or tag, or a force push whose old tip is not

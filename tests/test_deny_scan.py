@@ -19,7 +19,17 @@ from pathlib import Path
 
 import pytest
 
-from tests.deny_scan import RULES, canary, cast_exemptions, scan_text, scan_tree
+from tests.deny_scan import (
+    PUBLISHED_IDENTITY,
+    PUBLISHED_REPOSITORY,
+    RULES,
+    canary,
+    cast_exemptions,
+    check_identities,
+    main,
+    scan_text,
+    scan_tree,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GATE = REPO_ROOT / "tests" / "deny_scan.py"
@@ -79,3 +89,49 @@ def test_the_gate_does_not_flag_itself() -> None:
         GATE.read_text(encoding="utf-8"), relative, path=relative, exemptions=()
     )
     assert findings == [], [str(f) for f in findings]
+
+
+# --------------------------------------------------------------- hosts
+def test_a_host_name_is_caught_in_each_of_its_shapes() -> None:
+    scheme = "https" + "://"
+    planted = {
+        "host.url": f"see {scheme}media-box" + ".home-net" + ".io/web",
+        "host.localnet": "the server at nas" + ".lan answers",
+        "host.domain": "mail went to some" + "where" + ".net yesterday",
+    }
+    for rule, line in planted.items():
+        found = {f.rule for f in scan_text(line + "\n", rule, exemptions=())}
+        assert rule in found, (rule, found)
+
+
+def test_loopback_examples_and_project_hosts_are_not_host_names() -> None:
+    scheme = "https" + "://"
+    for line in (
+        "http" + "://127.0.0.1:8096",
+        scheme + "example" + ".com/a",
+        PUBLISHED_REPOSITORY + "/issues",
+        scheme + "ffmpeg" + ".org/",
+        "a Python attribute: threading.local() and logging.INFO",
+    ):
+        assert scan_text(line + "\n", "clean", exemptions=()) == [], line
+
+
+# ------------------------------------------------------------ identities
+def test_only_the_published_identity_passes_the_header_check() -> None:
+    name, mail = PUBLISHED_IDENTITY
+    assert check_identities([("a" * 40, name, mail, name, mail)]) == []
+
+
+def test_any_other_author_or_committer_is_a_finding_that_names_no_value() -> None:
+    name, mail = PUBLISHED_IDENTITY
+    other = ("Some" + "one Else", "someone" + "@" + "not-an-example.test")
+    found = check_identities([
+        ("b" * 40, *other, name, mail),
+        ("c" * 40, name, mail, *other),
+    ])
+    assert [f.rule for f in found] == ["identity.author", "identity.committer"]
+    assert all(other[0] not in str(f) and other[1] not in str(f) for f in found)
+
+
+def test_a_header_check_over_a_range_it_cannot_read_refuses() -> None:
+    assert main(["--identities", "no-such-revision-anywhere"]) == 1

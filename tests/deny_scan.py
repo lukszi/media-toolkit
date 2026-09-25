@@ -3,6 +3,7 @@
     python tests/deny_scan.py --tree .
     python tests/deny_scan.py --diff RANGE --messages RANGE
     python tests/deny_scan.py --canary
+    python tests/deny_scan.py --identities HEAD
 
 The policy in CONTRIBUTING.md is enforced here rather than remembered. CI runs
 it over the working tree and over every commit a push or a pull request brings,
@@ -10,9 +11,14 @@ one at a time, with its message -- and over the whole history once a week --
 and the same scan produced this repository's history in the first place.
 
 It looks for **shapes**, not for a list somebody remembered: an absolute path,
-a drive letter, a profile directory, a host address, an e-mail address, an
-identifier that could be a real item id or key, a release-name-shaped token.
-A value nobody thought to list still trips it.
+a drive letter, a profile directory, a host address or host name, an e-mail
+address, an identifier that could be a real item id or key, a
+release-name-shaped token. A value nobody thought to list still trips it.
+
+Commit headers are not content, so no content rule ever reads them. They get a
+check of their own: `--identities` requires every author and every committer
+in the range to be the one published identity below, and fails on anything
+else without printing it.
 
 Two things keep it usable.
 
@@ -51,7 +57,10 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["RULES", "Finding", "canary", "main", "scan_text", "scan_tree"]
+__all__ = [
+    "PUBLISHED_IDENTITY", "PUBLISHED_REPOSITORY", "RULES", "Finding", "canary",
+    "check_identities", "main", "scan_identities", "scan_text", "scan_tree",
+]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONVENTIONS = REPO_ROOT / "docs" / "CONVENTIONS.md"
@@ -133,6 +142,22 @@ RULES: tuple[Rule, ...] = (
         ("docs/gotchas/*",),
     ),
     _rule(
+        "host.url",
+        r'''(?i)\b[a-z][a-z0-9+.\-]*:'''
+        r'''//(?:[^\s/@'"`<>]*@)?+(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)|(?:[a-z0-9-]+\.)*(?:github\.com|polyformproject\.org|ffmpeg\.org|mkvtoolnix\.download|jellyfin\.org|python\.org|pypi\.org))(?![a-z0-9.\-]))[^\s/:?#'"`<>)\]]+''',
+        "a URL whose host is not loopback, an example name or a public project host",
+    ),
+    _rule(
+        "host.localnet",
+        r'''(?i)\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.(?:lan|local|localdomain|internal|home\.arpa|intranet|corp)\b(?![.(\w])''',
+        "a local-network host name",
+    ),
+    _rule(
+        "host.domain",
+        r'''(?<![\w.@/-])(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)|(?:[a-z0-9-]+\.)*(?:github\.com|polyformproject\.org|ffmpeg\.org|mkvtoolnix\.download|jellyfin\.org|python\.org|pypi\.org))(?![a-z0-9.\-]))(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|de|io|eu|dev|app|me|info|biz|at|ch|nl|uk|fr|it|es|pl|se|dk|fi|cz|be|xyz|cloud|online|site|tv|co)\b(?![\w(\-])''',
+        "a bare domain name that is not an example or a public project host",
+    ),
+    _rule(
         "release.resolution",
         r'''(?i)\b\d{3,4}p\b[^\n]{0,80}\b(?:BluRay|BDRip|BRRip|WEB-?DL|WEBRip|HDTV|REMUX|HDRip)\b''',
         "a scene-release name is an inventory entry",
@@ -199,8 +224,12 @@ def cast_exemptions(conventions: Path = CONVENTIONS) -> tuple[str, ...]:
 
 
 def _mask(text: str, exemptions: Sequence[str]) -> str:
-    """Blank the cast, keeping the length, so reported line numbers stay true."""
-    for name in exemptions:
+    """Blank the cast, keeping the length, so reported line numbers stay true.
+
+    The published identity and repository are blanked whatever the caller
+    passes: they are in the licence, the metadata and every commit header.
+    """
+    for name in (*exemptions, *PUBLISHED_IDENTITY, PUBLISHED_REPOSITORY):
         text = text.replace(name, "·" * len(name))
     return text
 
@@ -238,6 +267,42 @@ def scan_tree(root: Path) -> list[Finding]:
             path=relative, exemptions=exemptions,
         )
     return found
+
+
+#: The one identity this repository's history is written under, as author and
+#: as committer, and the repository it is published at. These exact strings are
+#: public on purpose and are never a finding; any other spelling still is.
+PUBLISHED_IDENTITY = ("Lukas Szimtenings", "25265369+lukszi@users.noreply.github.com")
+PUBLISHED_REPOSITORY = "https://github.com/lukszi/media-toolkit"
+
+
+def check_identities(
+    records: Iterable[tuple[str, str, str, str, str]],
+    allowed: tuple[str, str] = PUBLISHED_IDENTITY,
+) -> list[Finding]:
+    """(sha, author name, author e-mail, committer name, committer e-mail) rows.
+
+    A finding names the commit and which header it was, never the value: an
+    identity that should not be here is exactly what must not reach a log.
+    """
+    found: list[Finding] = []
+    for sha, a_name, a_mail, c_name, c_mail in records:
+        if (a_name, a_mail) != allowed:
+            found.append(Finding("identity.author", f"commit {sha[:9]}", 0))
+        if (c_name, c_mail) != allowed:
+            found.append(Finding("identity.committer", f"commit {sha[:9]}", 0))
+    return found
+
+
+def scan_identities(revisions: str) -> list[Finding]:
+    """Every author and committer header in `revisions` (e.g. HEAD: all of it)."""
+    raw = _git("log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", revisions)
+    rows: list[tuple[str, str, str, str, str]] = []
+    for line in raw.splitlines():
+        parts = line.split("\x1f")
+        if len(parts) == 5:
+            rows.append((parts[0], parts[1], parts[2], parts[3], parts[4]))
+    return check_identities(rows)
 
 
 def _git(*args: str) -> str:
@@ -334,11 +399,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--diff", metavar="RANGE", nargs="?", const="HEAD~1..HEAD")
     parser.add_argument("--messages", metavar="RANGE", nargs="?", const="HEAD~1..HEAD")
     parser.add_argument("--canary", action="store_true")
+    parser.add_argument("--identities", metavar="RANGE", nargs="?", const="HEAD")
     args = parser.parse_args(argv)
 
     if args.canary:
         return canary()
-    if not (args.tree or args.diff or args.messages):
+    if not (args.tree or args.diff or args.messages or args.identities):
         parser.print_help()
         return 2
 
@@ -353,6 +419,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             print(f"deny scan: no such range {revisions}, nothing to compare")
+    if args.identities:
+        if not _git("rev-list", "--max-count=1", args.identities):
+            # unlike a diff, a header check that could not read the history
+            # has not passed: refuse rather than report a clean result
+            print(f"deny scan: no such range {args.identities}", file=sys.stderr)
+            return 1
+        found += scan_identities(args.identities)
     return _report(found)
 
 
