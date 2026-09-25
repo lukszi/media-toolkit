@@ -13,9 +13,9 @@ and the snapshot is made with the one statement that is safe against a live
 database -- a read-only connection copying itself out.
 
 **Never write it with the service up.** A write goes through
-:func:`run_operations`, which insists on a controller that reports the service
-stopped, takes the snapshot first, and starts the service again afterwards
-whether the operation worked or not.
+:func:`run_operations`, which insists on a controller, stops the service,
+only then takes the snapshot and the counts, and starts the service again
+afterwards whether the operation worked or not.
 
 **No statement that was not written down.** A fix is a named operation with a
 precondition, a description and a count of the rows it would touch, and the
@@ -38,6 +38,7 @@ from __future__ import annotations
 import logging
 import shutil
 import sqlite3
+import tempfile
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
@@ -336,10 +337,18 @@ def run_operations(
     dry_run: bool = True,
     client: Client | None = None,
 ) -> MaintenanceReport:
-    """Describe, then -- if told twice -- stop, copy, apply, restart, count.
+    """Describe, then -- if told twice -- stop, copy, count, apply, count, restart.
 
     The dry run reads a copy and never the original, so it is safe to run
-    while everything is up; that is the whole point of having one.
+    while everything is up; that is the whole point of having one. Without
+    ``snapshot_dir`` the copy is made in a temporary directory and removed
+    afterwards; the only thing that touches the live file is the read-only
+    connection that writes the copy.
+
+    On an applied run the copy is taken *after* the service has stopped, so
+    the rollback artefact and the before-counts are the state that is about
+    to be rewritten, not a state from a moment earlier. The after-counts are
+    taken before the restart, for the same reason.
 
     The copy is not optional on an applied run. ``snapshot_dir`` may be left
     out while describing, and an applied run without one is refused: these
@@ -348,6 +357,10 @@ def run_operations(
     rollback artefact.
     """
     path = Path(database)
+    # Materialised once: the operations are walked twice, once to describe
+    # and once to apply, and a generator walked twice is empty the second
+    # time -- which applied nothing and reported ok.
+    ops = list(operations)
     if client is not None:
         busy = running_tasks(client)
         if busy:
@@ -363,33 +376,43 @@ def run_operations(
         )
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    copy: Path | None = None
-    if snapshot_dir is not None:
-        copy = snapshot(path, Path(snapshot_dir) / f"{path.stem}-{stamp}{path.suffix}")
-
-    description: list[str] = []
-    names: list[str] = []
-    reading = copy if copy is not None else path
-    with read_only(reading) as connection:
-        for operation in operations:
-            names.append(operation.name)
-            description += operation.describe(connection)
+    copy_name = f"{path.stem}-{stamp}{path.suffix}"
 
     if dry_run:
+        # The description is read from a copy, never from the file the
+        # server has open. With a directory named the copy is kept there;
+        # without one it goes to a temporary directory and is removed.
+        kept: Path | None = None
+        if snapshot_dir is not None:
+            kept = snapshot(path, Path(snapshot_dir) / copy_name)
+            names, description = _describe(kept, ops)
+        else:
+            with tempfile.TemporaryDirectory(prefix="jfkit-describe-") as scratch:
+                names, description = _describe(
+                    snapshot(path, Path(scratch) / copy_name), ops
+                )
         return MaintenanceReport(
-            database=path, snapshot=copy, applied=False,
+            database=path, snapshot=kept, applied=False,
             operations=tuple(names), description=tuple(description),
         )
 
-    before = counts(reading)
+    assert snapshot_dir is not None  # refused above
     touched = 0
     with stopped(controller):
+        # Stop first, then copy and count. A copy taken while the service
+        # is still up is a copy of a database that can change before the
+        # write: the rollback would not be the state that was rewritten, and
+        # the before-counts would be compared against a moving file.
+        copy = snapshot(path, Path(snapshot_dir) / copy_name)
+        before = counts(copy)
+        names, description = _describe(copy, ops)
         with closing(sqlite3.connect(str(path))) as connection:
-            for operation in operations:
+            for operation in ops:
                 touched += operation.apply(connection)
             connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    after = counts(path)
+        # Counted before the restart, while nothing else has the file open.
+        after = counts(path)
 
     problems = [
         f"{table}: {before.get(table)} row(s) before, {after.get(table)} after"
@@ -401,6 +424,19 @@ def run_operations(
         description=tuple(description), rows_touched=touched,
         counts_before=before, counts_after=after, problems=tuple(problems),
     )
+
+
+def _describe(
+    copy: Path, operations: Sequence[Operation]
+) -> tuple[list[str], list[str]]:
+    """Every operation's name and description, read from a copy."""
+    names: list[str] = []
+    description: list[str] = []
+    with read_only(copy) as connection:
+        for operation in operations:
+            names.append(operation.name)
+            description += operation.describe(connection)
+    return names, description
 
 
 # ------------------------------------------------------------- the tiles

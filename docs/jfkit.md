@@ -30,9 +30,24 @@ warning.
 
 **Writing is asked for twice.** Every command that changes anything takes
 `--dry-run`, which is the default, and `--apply`. In the dry run every
-mutating request is logged in full and not sent, so a whole pipeline can be
-run against a real server and produce a complete account of what it *would*
-do. There is no third state and no environment variable that flips it.
+mutating request is logged in full -- method, address and body, with any
+credential-looking value in the body replaced by `<redacted>` -- and not sent,
+so a whole pipeline can be run against a real server and produce a complete
+account of what it *would* do. There is no third state and no environment
+variable that flips it.
+
+**An applied write to a server record keeps a rollback.** Three verbs refuse
+`--apply` until they are told where to put the state they are about to
+replace, and write it there before anything is sent:
+
+| verb | flag | what is written |
+|---|---|---|
+| `jfkit item set` | `--backup PATH` | the whole record, as JSON |
+| `jfkit libopts set` | `--backup-dir DIR` | a stamped copy of the options document, and its values as JSON |
+| `jfkit segments scope` | `--backup-dir DIR` | the plugin's configuration, as JSON |
+
+`jfkit maintenance run --apply` refuses without `--snapshot-dir DIR` for the
+same reason, and copies the database there after the service has stopped.
 
 ---
 
@@ -52,8 +67,10 @@ jfkit segments    tasks|scope|cancel       scope a segment pass to what is not c
 jfkit jobs        gate|lanes               which device backs a path, and is it busy
 ```
 
-The first three read and change nothing. They are the ones worth running
-first, and `jfkit survey` is the cheapest useful thing in the package.
+`naming` and `survey` read and change nothing, and so does `item` except
+for `item set`, which writes. `naming`, `survey`, `item show` and
+`item diff` are the ones worth running first, and `jfkit survey` is the
+cheapest useful thing in the package.
 
 ---
 
@@ -141,6 +158,10 @@ update_item(client, item_id, {"IndexNumber": 3, "Name": "The Quiet Harbour"})
 print(compare(before, fetch(client, item_id), expected=["Name", "IndexNumber"]))
 ```
 
+From the command line the same write is
+`jfkit item set ID --field IndexNumber=3 --backup work/before.json --apply`;
+without `--backup` the `--apply` is refused and nothing is sent.
+
 Four things it does that a two-line version does not:
 
 - **fetches the whole record from the user-scoped route** -- the unscoped
@@ -195,10 +216,19 @@ which is a different library, and it takes a scan to notice.
 ```
 jfkit libopts show /var/lib/media-server/root/default/Movies/options.xml
 jfkit libopts roots --data-dir /var/lib/media-server
+jfkit libopts set /var/lib/media-server/root/default/Movies/options.xml \
+    --id ID --field EnableEmbeddedTitles=false --backup-dir work/options --apply
 ```
 
-The defaults table is data here, with a test. A write re-reads the document
-afterwards and asserts that exactly the intended fields moved.
+The defaults table is data here, with a test. A write copies the document to
+`--backup-dir` first (an applied `set` without one is refused), then re-reads
+the document afterwards and asserts that exactly the intended fields moved.
+
+The two record lists -- the library's paths and its per-type options, with
+their fetcher lists and image options -- are parsed against their known shape
+and rendered back to prove the round-trip. A document carrying anything that
+shape does not cover is refused rather than sent back with a part flattened
+or dropped.
 
 `jfkit libopts roots` is the two-line check for the symptom that is hardest to
 attribute: every library listed with no identifier and no options, because the
@@ -234,9 +264,14 @@ starting it while the disk is busy.
 
 ```
 jfkit segments tasks
-jfkit segments scope --plugin "segment" --apply
+jfkit segments scope --plugin "segment" --backup-dir work/segments --apply
 jfkit jobs gate /srv/media/movies
 ```
+
+`scope` adds the covered series and films to the plugin's exclusion lists and
+keeps every exclusion that was already there; the configuration as it was is
+written to `--backup-dir` before the change, and an applied `scope` without
+one is refused.
 
 No plugin or task identifier is ever written down: both are looked up by
 name, and a name that matches two things is an error rather than a coin toss.

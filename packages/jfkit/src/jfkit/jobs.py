@@ -57,14 +57,18 @@ __all__ = [
     "HEAVY_READERS",
     "Gate",
     "Job",
+    "JobRefused",
     "Lane",
     "Process",
     "detached_command",
+    "detached_commands",
+    "existing_task_query",
     "gate",
     "launch_detached",
     "list_processes",
     "pack_lanes",
     "scheduler_program",
+    "task_name",
 ]
 
 log = logging.getLogger(__name__)
@@ -95,9 +99,20 @@ class Process:
         return stem in HEAVY_READERS
 
 
+class JobRefused(RuntimeError):
+    """A job was not detached, and nothing was created or started."""
+
+
 @dataclass(frozen=True)
 class Job:
-    """One piece of work: what to run, where its output goes, what it reads."""
+    """One piece of work: what to run, where its output goes, what it reads.
+
+    ``environment`` is added to the job's environment and ``log`` receives
+    its standard output and standard error, appended. The transient-unit
+    form carries both. The scheduled-task form has no way to carry either
+    without a shell to interpret them, so a job that sets one is refused
+    there rather than started without it.
+    """
 
     name: str
     argv: Sequence[str]
@@ -300,14 +315,11 @@ def scheduler_program() -> str | None:
     return None
 
 
-def detached_command(job: Job, *, program: str | None = None) -> list[str]:
-    """The command line that starts this job detached, as data.
+def _is_scheduler(program: str) -> bool:
+    return Path(program).stem.lower() == WINDOWS_SCHEDULER
 
-    Returned rather than run, so a caller can print it, log it, put it in a
-    report, or run it. The two shapes differ only in their preamble; the
-    job's own program and arguments are passed through untouched, and nothing
-    is ever handed to a shell to re-parse.
-    """
+
+def _chosen(program: str | None) -> str:
     chosen = program or scheduler_program()
     if chosen is None:
         raise RuntimeError(
@@ -315,11 +327,72 @@ def detached_command(job: Job, *, program: str | None = None) -> list[str]:
             "Run the command in the foreground, or see "
             "docs/patterns/detached-jobs.md for the two it looks for."
         )
-    name = re.sub(r"[^A-Za-z0-9._-]+", "-", job.name).strip("-") or "job"
-    if Path(chosen).stem.lower() == WINDOWS_SCHEDULER:
-        return [chosen, "/Create", "/F", "/TN", name, "/SC", "ONCE", "/ST",
-                "00:00", "/TR", subprocess.list2cmdline(list(job.argv))]
-    return [chosen, "--user", f"--unit={name}", "--collect", *job.argv]
+    return chosen
+
+
+def task_name(job: Job) -> str:
+    """The job's name, reduced to what either scheduler accepts."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", job.name).strip("-") or "job"
+
+
+def detached_command(
+    job: Job, *, program: str | None = None, replace: bool = False
+) -> list[str]:
+    """The command line that creates this job detached, as data.
+
+    Returned rather than run, so a caller can print it, log it, put it in a
+    report, or run it. The two shapes differ only in their preamble; the
+    job's own program and arguments are passed through untouched, and nothing
+    is ever handed to a shell to re-parse.
+
+    For the scheduled-task form this *creates* the task and does not start
+    it -- :func:`detached_commands` gives the create and the start together.
+    The create never overwrites a task of the same name unless ``replace``
+    is set, and a job with an environment or a log is refused there, because
+    that form cannot carry either.
+    """
+    chosen = _chosen(program)
+    name = task_name(job)
+    if _is_scheduler(chosen):
+        if job.environment or job.log is not None:
+            raise JobRefused(
+                f"{job.name}: a scheduled task runs one command line with no shell, "
+                "so it cannot set environment variables or send output to a log. "
+                "Put both in the program's own arguments, or use the transient-unit "
+                "form. Nothing was created."
+            )
+        return [chosen, "/Create", *(["/F"] if replace else []), "/TN", name,
+                "/SC", "ONCE", "/ST", "00:00",
+                "/TR", subprocess.list2cmdline(list(job.argv))]
+    command = [chosen, "--user", f"--unit={name}", "--collect"]
+    command += [f"--setenv={key}={value}" for key, value in sorted(job.environment.items())]
+    if job.log is not None:
+        target = Path(job.log).absolute()
+        command += [f"--property=StandardOutput=append:{target}",
+                    f"--property=StandardError=append:{target}"]
+    return [*command, *job.argv]
+
+
+def detached_commands(
+    job: Job, *, program: str | None = None, replace: bool = False
+) -> list[list[str]]:
+    """Every command that starting this job takes, in order.
+
+    One for the transient-unit form, which starts as it is created. Two for
+    the scheduled-task form: the create, whose one-off trigger at midnight is
+    normally already in the past and so never fires by itself, and then the
+    explicit run that actually starts it.
+    """
+    chosen = _chosen(program)
+    create = detached_command(job, program=chosen, replace=replace)
+    if _is_scheduler(chosen):
+        return [create, [chosen, "/Run", "/TN", task_name(job)]]
+    return [create]
+
+
+def existing_task_query(job: Job, *, program: str) -> list[str]:
+    """The read that says whether a scheduled task of this name exists already."""
+    return [program, "/Query", "/TN", task_name(job)]
 
 
 def launch_detached(
@@ -327,26 +400,45 @@ def launch_detached(
     *,
     program: str | None = None,
     dry_run: bool = True,
+    replace: bool = False,
     runner: Callable[[Sequence[str]], int] | None = None,
-) -> tuple[list[str], int | None]:
-    """Start a job that outlives this process. Returns the command and the result.
+) -> tuple[list[list[str]], int | None]:
+    """Start a job that outlives this process. Returns the commands and the result.
 
     Dry run by default, like everything else here that changes something: the
-    command it would run is the whole output, and it is the same command the
-    real path uses.
+    commands it would run are the whole output, and they are the same
+    commands the real path uses.
+
+    On the scheduled-task form it asks first whether a task with that name
+    already exists, and refuses if one does unless ``replace`` is set -- a
+    silent overwrite replaces somebody's task with this one. The result is
+    the first non-zero exit status, or zero when every command succeeded.
     """
-    command = detached_command(job, program=program)
+    chosen = _chosen(program)
+    commands = detached_commands(job, program=chosen, replace=replace)
     if dry_run:
         log.info("dry run: would detach %s", job.name)
-        return command, None
+        return commands, None
     run = runner or _run
+    if _is_scheduler(chosen) and not replace:
+        if run(existing_task_query(job, program=chosen)) == 0:
+            raise JobRefused(
+                f"a scheduled task named {task_name(job)} already exists; it is not "
+                "replaced unless asked (replace=True). Nothing was created."
+            )
     log.info("detaching %s", job.name)
-    return command, run(command)
+    for command in commands:
+        result = run(command)
+        if result != 0:
+            return commands, result
+    return commands, 0
 
 
 def _run(command: Sequence[str]) -> int:  # pragma: no cover - starts a real job
+    # No standard input: a scheduler that would ask a question gets an end of
+    # file and fails, rather than waiting for an answer nobody will give.
     completed = subprocess.run(
-        list(command), capture_output=True, text=True,
+        list(command), capture_output=True, text=True, stdin=subprocess.DEVNULL,
         encoding="utf-8", errors="replace", check=False,
     )
     if completed.returncode != 0:

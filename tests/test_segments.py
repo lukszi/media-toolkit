@@ -9,7 +9,9 @@ every episode of the series, and that is hours of disk for two openings.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -204,7 +206,7 @@ def test_two_series_are_judged_separately() -> None:
 
 # ------------------------------------------------------------------ scoping
 def test_scoping_writes_the_exclusions_and_leaves_the_rest_of_the_configuration(
-    installed: tuple[str, Recorder]
+    installed: tuple[str, Recorder], tmp_path: Path
 ) -> None:
     url, recorder = installed
     client = client_for(url, dry_run=False)
@@ -212,7 +214,7 @@ def test_scoping_writes_the_exclusions_and_leaves_the_rest_of_the_configuration(
     episodes = [episode(n) for n in range(10)]
     found = coverage(episodes, [e["Id"] for e in episodes[:9]])
 
-    report = scope_plugin(client, plugin, found)
+    report = scope_plugin(client, plugin, found, backup_dir=tmp_path)
     written = recorder.plugin_configuration[PLUGIN_ID]
 
     assert report.applied
@@ -221,14 +223,14 @@ def test_scoping_writes_the_exclusions_and_leaves_the_rest_of_the_configuration(
 
 
 def test_scoping_turns_off_the_setting_that_undoes_it(
-    installed: tuple[str, Recorder]
+    installed: tuple[str, Recorder], tmp_path: Path
 ) -> None:
     """Automatic detection analyses everything the exclusions do not cover,
     whenever it likes, which is the opposite of scoping a pass."""
     url, recorder = installed
     client = client_for(url, dry_run=False)
     plugin = find_plugin(client, "segment")
-    report = scope_plugin(client, plugin, coverage([], []))
+    report = scope_plugin(client, plugin, coverage([], []), backup_dir=tmp_path)
     assert recorder.plugin_configuration[PLUGIN_ID]["AutoDetectIntros"] is False
     assert any("opposite of scoping" in note for note in report.notes)
 
@@ -240,6 +242,73 @@ def test_a_dry_run_scope_writes_nothing(installed: tuple[str, Recorder]) -> None
     report = scope_plugin(client, plugin, coverage([], []))
     assert not report.applied
     assert recorder.plugin_configuration[PLUGIN_ID]["AutoDetectIntros"] is True
+
+
+
+def test_scoping_keeps_the_exclusions_that_were_already_there(
+    installed: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    """Somebody put them there for a reason the coverage cannot see."""
+    url, recorder = installed
+    by_hand = "00000000-0000-0000-0000-000000000599"
+    recorder.plugin_configuration[PLUGIN_ID]["SeriesExclusions"] = [by_hand, SERIES_ID]
+    recorder.plugin_configuration[PLUGIN_ID]["MovieExclusions"] = [by_hand]
+    client = client_for(url, dry_run=False)
+    plugin = find_plugin(client, "segment")
+    episodes = [episode(n) for n in range(10)]
+    found = coverage(episodes, [e["Id"] for e in episodes])
+
+    report = scope_plugin(client, plugin, found, backup_dir=tmp_path)
+    written = recorder.plugin_configuration[PLUGIN_ID]
+    assert written["SeriesExclusions"] == [by_hand, SERIES_ID], "no duplicate, none lost"
+    assert written["MovieExclusions"] == [by_hand]
+    assert report.kept == 3
+
+
+def test_an_applied_scope_without_a_backup_directory_is_refused(
+    installed: tuple[str, Recorder]
+) -> None:
+    url, recorder = installed
+    before = dict(recorder.plugin_configuration[PLUGIN_ID])
+    client = client_for(url, dry_run=False)
+    plugin = find_plugin(client, "segment")
+    with pytest.raises(ValueError, match="backup"):
+        scope_plugin(client, plugin, coverage([], []))
+    assert ("POST", f"/Plugins/{PLUGIN_ID}/Configuration") not in recorder.requests
+    assert recorder.plugin_configuration[PLUGIN_ID] == before
+
+
+def test_an_exclusion_list_of_another_shape_is_refused_not_overwritten(
+    installed: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    url, recorder = installed
+    recorder.plugin_configuration[PLUGIN_ID]["SeriesExclusions"] = "a,b"
+    client = client_for(url, dry_run=False)
+    plugin = find_plugin(client, "segment")
+    with pytest.raises(ValueError, match="not a list"):
+        scope_plugin(client, plugin, coverage([], []), backup_dir=tmp_path)
+    assert ("POST", f"/Plugins/{PLUGIN_ID}/Configuration") not in recorder.requests
+
+
+def test_the_configuration_as_it_was_is_written_before_the_change(
+    installed: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    url, recorder = installed
+    before = dict(recorder.plugin_configuration[PLUGIN_ID])
+    client = client_for(url, dry_run=False)
+    plugin = find_plugin(client, "segment")
+    seen_at_post: list[list[Path]] = []
+    real_post = client.post
+
+    def post(route: str, body: object = None, **params: object) -> object:
+        seen_at_post.append(sorted(tmp_path.glob("*.json")))
+        return real_post(route, body, **params)
+
+    client.post = post  # type: ignore[method-assign]
+    report = scope_plugin(client, plugin, coverage([], []), backup_dir=tmp_path)
+    assert report.backup is not None
+    assert seen_at_post == [[report.backup]], "the artefact existed before the write"
+    assert json.loads(report.backup.read_text(encoding="utf-8")) == before
 
 
 # --------------------------------------------------------------- the switch

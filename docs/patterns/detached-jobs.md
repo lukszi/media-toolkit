@@ -1,7 +1,7 @@
 # Detached jobs
 
-**Implemented by `jfkit.jobs.detached_command()` and
-`jfkit.jobs.launch_detached()`.**
+**Implemented by `jfkit.jobs.detached_command()`,
+`jfkit.jobs.detached_commands()` and `jfkit.jobs.launch_detached()`.**
 
 A job that reads a whole library takes hours. It must not depend on a terminal
 staying open, on a session staying logged in, or on nobody closing a laptop.
@@ -16,21 +16,29 @@ the library.
 ## 1. The command is data
 
 ```python
-from jfkit.jobs import Job, detached_command
+from jfkit.jobs import Job, detached_commands
 
 job = Job(
     name="language scan",
-    argv=["mkvkit", "langid", "scan", "/srv/media/movies"],
-    log=Path("work/langid.jsonl"),
+    argv=["mkvkit", "langid", "scan",
+          "--jobs", "work/jobs.jsonl", "--out", "work/langid.jsonl"],
     reads=Path("/srv/media/movies"),
 )
-command = detached_command(job)
+commands = detached_commands(job)
 ```
 
-`detached_command()` returns the argument list that would start it. Returned
-rather than run, so a caller can print it, log it, put it in a report, review
-it, or run it. `launch_detached()` runs it, and is a dry run by default like
+`detached_commands()` returns the argument lists that would start it --
+one for the transient unit, two for the scheduled task (create, then run).
+`detached_command()` returns the first of them alone. Returned rather than
+run, so a caller can print them, log them, put them in a report, review them,
+or run them. `launch_detached()` runs them, and is a dry run by default like
 everything else here that changes something.
+
+`Job.environment` and `Job.log` are honoured by the transient-unit form: each
+variable becomes a `--setenv=`, and the log receives the job's standard output
+and standard error, appended. The scheduled-task form runs one command line
+with no shell, so it can carry neither, and a job that sets either is refused
+there with nothing created -- rather than started without them.
 
 Nothing is ever handed to a shell to re-parse. The job's own program and
 arguments are passed through untouched, which is what makes a path with a
@@ -42,8 +50,15 @@ The library looks for whichever of these is on the path:
 
 | platform | program | shape |
 |---|---|---|
-| Windows | `schtasks` | `/Create /F /TN <name> /SC ONCE /ST 00:00 /TR <command>` |
-| systemd hosts | `systemd-run` | `--user --unit=<name> --collect <command>` |
+| Windows | `schtasks` | `/Create /TN <name> /SC ONCE /ST 00:00 /TR <command>`, then `/Run /TN <name>` |
+| systemd hosts | `systemd-run` | `--user --unit=<name> --collect [--setenv=K=V ...] [--property=StandardOutput=append:<log> ...] <command>` |
+
+The scheduled task's one-off trigger at midnight is normally already in the
+past, so it never fires by itself; the explicit `/Run` is what starts the job.
+Before creating it, `launch_detached()` asks (`/Query /TN <name>`) whether a
+task of that name exists and **refuses** if one does: `/Create` without `/F`
+would stop to ask, and with `/F` it would silently replace somebody's task.
+Pass `replace=True` to add `/F` when replacing it is what you mean.
 
 Both are named in full *here*, in the document that explains them, and
 assembled from pieces in the source. That is this repository's convention for
@@ -99,9 +114,14 @@ the next person nothing.
 
 ```
 jfkit jobs gate /srv/media/movies --tag langid || exit 1
-mkvkit langid scan /srv/media/movies --results work/langid.jsonl --resume
-mkvkit langid report --results work/langid.jsonl --out work/langid.md
+mkvkit langid jobs /srv/media/movies --out work/jobs.jsonl
+mkvkit langid scan --jobs work/jobs.jsonl --out work/langid.jsonl
+mkvkit langid report --results work/langid.jsonl --out-dir work/langid
 ```
+
+`scan` skips every track already in its result file, so running the same line
+again after an interruption carries on where it stopped; there is no separate
+resume switch.
 
 started with `launch_detached()`, or by hand with the command it prints.
 
@@ -115,4 +135,6 @@ started with `launch_detached()`, or by hand with the command it prints.
   here.
 - **No cleanup of scheduler entries.** The transient-unit form collects
   itself; the task form leaves an entry behind that ran once, which is
-  visible and harmless and still somebody's to remove.
+  visible and harmless and still somebody's to remove. Until it is removed,
+  launching another job under the same name is refused unless
+  `replace=True` is passed.

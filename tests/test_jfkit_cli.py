@@ -170,12 +170,90 @@ def test_a_dry_run_set_sends_nothing(
 
 
 def test_apply_is_what_sends_it(
-    configured: Path, server: tuple[str, Recorder]
+    configured: Path, server: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    _url, recorder = server
+    backup = tmp_path / "before" / "first.json"
+    assert run(configured, "item", "set", FIRST,
+               "--field", "Name=Blue Canyon", "--backup", str(backup),
+               "--apply") == 0
+    assert [item for item, _body in recorder.posted] == [FIRST]
+    assert json.loads(backup.read_text(encoding="utf-8"))["Name"] == ITEMS[0]["Name"]
+
+
+def test_an_applied_set_without_a_backup_is_refused(
+    configured: Path, server: tuple[str, Recorder],
+    capsys: pytest.CaptureFixture[str]
 ) -> None:
     _url, recorder = server
     assert run(configured, "item", "set", FIRST,
-               "--field", "Name=Blue Canyon", "--apply") == 0
-    assert [item for item, _body in recorder.posted] == [FIRST]
+               "--field", "Name=Blue Canyon", "--apply") == 2
+    assert "--backup PATH" in capsys.readouterr().out
+    assert recorder.posted == []
+    assert not any(method == "POST" for method, _route in recorder.requests)
+
+
+def test_an_applied_options_write_without_a_backup_directory_is_refused(
+    configured: Path, server: tuple[str, Recorder], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    _url, recorder = server
+    document = tmp_path / "options.xml"
+    document.write_text(
+        "<LibraryOptions><EnableEmbeddedTitles>true</EnableEmbeddedTitles>"
+        "</LibraryOptions>",
+        encoding="utf-8",
+    )
+    assert run(configured, "libopts", "set", str(document), "--id", FIRST,
+               "--field", "EnableEmbeddedTitles=false", "--apply") == 2
+    assert "--backup-dir DIR" in capsys.readouterr().out
+    assert recorder.options_writes == []
+
+
+def test_an_applied_options_write_copies_the_document_first(
+    configured: Path, server: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    _url, recorder = server
+    document = tmp_path / "options.xml"
+    document.write_text(
+        "<LibraryOptions><EnableEmbeddedTitles>true</EnableEmbeddedTitles>"
+        "</LibraryOptions>",
+        encoding="utf-8",
+    )
+    recorder.options_documents[FIRST] = document
+    run(configured, "libopts", "set", str(document), "--id", FIRST,
+        "--field", "EnableEmbeddedTitles=false",
+        "--backup-dir", str(tmp_path / "backups"), "--apply")
+    [copy] = (tmp_path / "backups").glob("*.xml")
+    assert "<EnableEmbeddedTitles>true" in copy.read_text(encoding="utf-8")
+    assert len(recorder.options_writes) == 1
+
+
+def test_an_applied_scope_without_a_backup_directory_is_refused(
+    configured: Path, server: tuple[str, Recorder],
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    _url, recorder = server
+    assert run(configured, "segments", "scope", "--plugin", "segment",
+               "--apply") == 2
+    assert "--backup-dir DIR" in capsys.readouterr().out
+    assert recorder.requests == [], "refused before the server was asked anything"
+
+
+def test_an_applied_scope_writes_the_configuration_as_it_was(
+    configured: Path, server: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    _url, recorder = server
+    plugin_id = "00000000-0000-0000-0000-000000000301"
+    recorder.installed_plugins = [{"Id": plugin_id, "Name": "Segment Finder"}]
+    recorder.plugin_configuration[plugin_id] = {
+        "SeriesExclusions": ["kept"], "MovieExclusions": [],
+    }
+    assert run(configured, "segments", "scope", "--plugin", "segment",
+               "--backup-dir", str(tmp_path / "backups"), "--apply") == 0
+    [copy] = (tmp_path / "backups").glob("*.json")
+    assert json.loads(copy.read_text(encoding="utf-8"))["SeriesExclusions"] == ["kept"]
+    assert recorder.plugin_configuration[plugin_id]["SeriesExclusions"][0] == "kept"
 
 
 def test_a_refresh_that_drifts_exits_non_zero(
@@ -248,6 +326,41 @@ def test_the_database_verbs_work_without_a_server(
     assert run(configured, "maintenance", "snapshot", str(database),
                str(tmp_path / "copy.db")) == 0
     assert (tmp_path / "copy.db").is_file()
+
+
+
+def _database(path: Path) -> Path:
+    import sqlite3
+
+    connection = sqlite3.connect(path)
+    connection.execute("CREATE TABLE BaseItems (Id TEXT, Path TEXT)")
+    connection.commit()
+    connection.close()
+    return path
+
+
+def test_a_maintenance_pass_needs_no_server_configured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With no server described, the busy check is skipped, not demanded."""
+    config = tmp_path / "files-only.toml"
+    config.write_text('[paths]\nmovies = "/srv/media/movies"\n', encoding="utf-8")
+    database = _database(tmp_path / "catalogue.db")
+    assert run(config, "maintenance", "run", str(database), "--reindex") == 0
+    assert "dry run, nothing written" in capsys.readouterr().out
+
+
+def test_a_named_controller_without_a_service_name_is_refused(
+    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database = _database(tmp_path / "catalogue.db")
+    before = database.read_bytes()
+    assert run(configured, "maintenance", "run", str(database), "--reindex",
+               "--service", "systemd", "--snapshot-dir", str(tmp_path / "copies"),
+               "--apply") == 2
+    assert "--service-name" in capsys.readouterr().out
+    assert database.read_bytes() == before
+    assert not (tmp_path / "copies").exists()
 
 
 def test_restoring_previews_is_a_dry_run_by_default(

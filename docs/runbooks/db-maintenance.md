@@ -68,19 +68,29 @@ out of step -- the thing a second writer leaves behind.
 
 What the command does around it is the point:
 
-1. asks the server whether a scheduled task is running, and **refuses** if one
-   is, because stopping the service under a scan leaves it half-finished;
-2. takes the copy from step 1, into `--snapshot-dir`;
-3. stops the service through the controller;
+1. when the configuration names a server, asks it whether a scheduled task is
+   running, and **refuses** if one is, because stopping the service under a
+   scan leaves it half-finished (with no server configured this step is
+   skipped, and the rest runs on the file alone);
+2. stops the service through the controller;
+3. only then takes the copy, into `--snapshot-dir`, and counts the rows in it
+   -- so the copy is the state that is about to be rewritten, not the state
+   from a moment before the stop;
 4. runs the operation, commits, and truncates the write-ahead log;
-5. starts the service;
-6. compares the row counts before and after, and **reports any difference as
+5. counts the rows again, while the service is still stopped;
+6. starts the service -- whether the operation worked or not;
+7. compares the row counts before and after, and **reports any difference as
    a problem** -- a maintenance pass that changed a row count did something
    nobody asked for.
 
-Without `--apply` it does steps 1, 2 and a description of what would run,
-against the copy. That dry run is safe to run at any time, which is the whole
-point of having one.
+`--apply` without `--snapshot-dir` is refused before anything is stopped.
+
+Without `--apply` it does step 1 and a description of what would run, read
+from a copy: the copy goes into `--snapshot-dir` if you name one and is kept,
+or into a temporary directory that is removed afterwards if you do not. The
+only connection to the live file is the read-only one that writes the copy.
+The service is not stopped, nothing is written, and the dry run is safe to run
+at any time, which is the whole point of having one.
 
 ## 4. Repoint the library roots after the data directory moves
 

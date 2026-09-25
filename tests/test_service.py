@@ -9,12 +9,15 @@ depends on.
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 from jfkit.service import (
     ManualServiceController,
     ServiceControlError,
     ServiceController,
     SystemdServiceController,
+    WindowsServiceController,
     controller_for,
     stopped,
 )
@@ -80,3 +83,55 @@ def test_the_unit_manager_implementation_refuses_clearly() -> None:
 def test_an_unknown_kind_is_an_error() -> None:
     with pytest.raises(ServiceControlError):
         controller_for("systemd-but-spelled-wrong")
+
+
+@pytest.mark.parametrize("kind", ["windows", "systemd"])
+def test_a_real_controller_needs_the_services_registered_name(kind: str) -> None:
+    """There is no default name: a guessed one addresses a service nobody has."""
+    with pytest.raises(ServiceControlError, match="--service-name"):
+        controller_for(kind)
+
+
+def test_the_name_given_is_the_name_used() -> None:
+    controller = controller_for("systemd", name="example-media")
+    assert isinstance(controller, SystemdServiceController)
+    assert controller.name == "example-media"
+    assert controller_for(name="example-media").name == "example-media"
+
+
+def _answering(
+    controller: WindowsServiceController, stdout: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, ...]]:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(list(args), 0, stdout, "")
+
+    monkeypatch.setattr(controller, "_run", fake_run)
+    return calls
+
+
+def test_the_service_control_program_is_asked_with_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = WindowsServiceController(name="example-media")
+    calls = _answering(
+        controller,
+        "SERVICE_NAME: example-media\n        STATE              : 4  RUNNING\n",
+        monkeypatch,
+    )
+    assert controller.is_running()
+    assert calls == [("query", "example-media")]
+
+
+def test_nssm_is_asked_with_status_and_its_answer_is_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NSSM has no query verb; its status answer is one word, sometimes wide."""
+    controller = WindowsServiceController(name="example-media", program="nssm.exe")
+    wide = "\x00".join("SERVICE_STOPPED") + "\x00\r\n"
+    calls = _answering(controller, wide, monkeypatch)
+    assert not controller.is_running()
+    assert calls == [("status", "example-media")]

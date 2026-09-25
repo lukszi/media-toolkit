@@ -100,6 +100,29 @@ STRING_LISTS: tuple[str, ...] = (
     "LyricFetcherOrder", "CustomTagDelimiters", "DelimiterWhitelist",
 )
 
+#: The two fields whose value is a list of records rather than a scalar, and
+#: the shape of one record in each: the element each entry is written as, and
+#: each field's kind -- ``str``, ``int``, ``list`` (of strings), or a nested
+#: ``(entry element, shape)`` pair. Anything a document carries beyond this
+#: shape is reported as unknown, and a write refuses while any is present,
+#: because sending back a record with a part dropped is the silent change
+#: this module exists to prevent.
+Shape = Mapping[str, Any]
+IMAGE_OPTION: Shape = {"Type": str, "Limit": int, "MinWidth": int}
+TYPE_OPTION: Shape = {
+    "Type": str,
+    "MetadataFetchers": list,
+    "MetadataFetcherOrder": list,
+    "ImageFetchers": list,
+    "ImageFetcherOrder": list,
+    "ImageOptions": ("ImageOption", IMAGE_OPTION),
+}
+PATH_INFO: Shape = {"Path": str, "NetworkPath": str}
+RECORD_LISTS: Mapping[str, tuple[str, Shape]] = {
+    "PathInfos": ("MediaPathInfo", PATH_INFO),
+    "TypeOptions": ("TypeOptions", TYPE_OPTION),
+}
+
 #: What each field is when the document does not mention it. These are the
 #: type's own constructor defaults; a field omitted from the document has this
 #: value at runtime, and sending it back as ``null`` instead is the silent
@@ -227,6 +250,77 @@ def _strings(node: ElementTree.Element) -> list[str]:
     return [(child.text or "") for child in node.findall("string")]
 
 
+def _records(
+    node: ElementTree.Element, entry_tag: str, shape: Shape, where: str,
+    unknown: list[str],
+) -> list[dict[str, Any]]:
+    """A list of records, parsed field by field against a known shape.
+
+    Recursive, so a fetcher list stays a list and an image option stays a
+    record with its numbers as numbers -- rather than being flattened to the
+    whitespace between the elements, which is what reading ``.text`` does.
+    Anything outside the shape is added to ``unknown`` under its full path.
+    """
+    out: list[dict[str, Any]] = []
+    for entry in node:
+        if entry.tag != entry_tag:
+            unknown.append(f"{where}/{entry.tag}")
+            continue
+        record: dict[str, Any] = {}
+        for sub in entry:
+            kind = shape.get(sub.tag)
+            here = f"{where}/{entry_tag}/{sub.tag}"
+            if kind is None or sub.tag in record:
+                unknown.append(here)
+            elif kind is str:
+                record[sub.tag] = sub.text
+            elif kind is int:
+                try:
+                    record[sub.tag] = int((sub.text or "").strip())
+                except ValueError:
+                    unknown.append(here)
+            elif kind is list:
+                if any(child.tag != "string" for child in sub):
+                    unknown.append(here)
+                record[sub.tag] = _strings(sub)
+            else:
+                inner_tag, inner_shape = kind
+                record[sub.tag] = _records(sub, inner_tag, inner_shape, here, unknown)
+        out.append(record)
+    return out
+
+
+def _render_records(
+    tag: str, records: Sequence[Mapping[str, Any]], entry_tag: str, shape: Shape
+) -> ElementTree.Element:
+    """The inverse of :func:`_records`, used only to prove the round-trip."""
+    node = ElementTree.Element(tag)
+    for record in records:
+        entry = ElementTree.SubElement(node, entry_tag)
+        for key, value in record.items():
+            kind = shape[key]
+            if isinstance(kind, tuple):
+                entry.append(_render_records(key, value, *kind))
+                continue
+            sub = ElementTree.SubElement(entry, key)
+            if kind is list:
+                for item in value:
+                    ElementTree.SubElement(sub, "string").text = item
+            elif value is not None:
+                sub.text = str(value)
+    return node
+
+
+def _canonical(node: ElementTree.Element) -> tuple[Any, ...]:
+    """An element as a comparable value: tag, attributes, text, children."""
+    return (
+        node.tag,
+        tuple(sorted(node.attrib.items())),
+        (node.text or "").strip(),
+        tuple(_canonical(child) for child in node),
+    )
+
+
 def parse_options(text: str) -> tuple[dict[str, Any], list[str], list[str]]:
     """Parse an options document into values, the fields it named, and the rest.
 
@@ -234,6 +328,12 @@ def parse_options(text: str) -> tuple[dict[str, Any], list[str], list[str]]:
     of them the document actually carried, and which elements this table does
     not understand. A round-trip would drop the third group, so a caller that
     finds any refuses to write rather than silently discarding them.
+
+    The two record lists -- paths and per-type options -- are parsed against
+    their known shapes (:data:`RECORD_LISTS`) and then rendered back and
+    compared with the document. Anything the shape does not cover, and any
+    list that does not come back exactly as it went in, is reported as
+    unknown, so a write refuses rather than send back a flattened copy.
     """
     root = ElementTree.fromstring(text)
     values: dict[str, Any] = copy.deepcopy(dict(CTOR_DEFAULTS))
@@ -250,10 +350,17 @@ def parse_options(text: str) -> tuple[dict[str, Any], list[str], list[str]]:
             values[tag] = child.text
         elif tag in STRING_LISTS:
             values[tag] = _strings(child)
-        elif tag in ("PathInfos", "TypeOptions"):
-            values[tag] = [
-                {sub.tag: sub.text for sub in entry} for entry in list(child)
-            ]
+        elif tag in RECORD_LISTS:
+            entry_tag, shape = RECORD_LISTS[tag]
+            found: list[str] = []
+            values[tag] = _records(child, entry_tag, shape, tag, found)
+            unknown += found
+            if not found and _canonical(
+                _render_records(tag, values[tag], entry_tag, shape)
+            ) != _canonical(child):
+                # parsed without complaint and still does not come back as
+                # it went in: an attribute, stray text -- refuse either way
+                unknown.append(f"{tag} (does not round-trip)")
         else:
             unknown.append(tag)
     return values, named, unknown

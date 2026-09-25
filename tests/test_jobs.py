@@ -21,8 +21,10 @@ from jfkit.jobs import (
     WINDOWS_SCHEDULER,
     Gate,
     Job,
+    JobRefused,
     Process,
     detached_command,
+    detached_commands,
     gate,
     launch_detached,
     pack_lanes,
@@ -216,20 +218,113 @@ def test_with_no_scheduler_the_error_says_where_to_read_about_it(
 
 
 def test_a_dry_run_launch_returns_the_command_it_would_have_run() -> None:
-    command, result = launch_detached(
+    commands, result = launch_detached(
         Job(name="scan", argv=["mkvkit", "langid", "scan"]), program=UNIT_RUNNER
     )
     assert result is None
-    assert command[0] == UNIT_RUNNER
+    assert [command[0] for command in commands] == [UNIT_RUNNER]
 
     ran: list[list[str]] = []
-    command2, result2 = launch_detached(
+    commands2, result2 = launch_detached(
         Job(name="scan", argv=["mkvkit", "langid", "scan"]),
         program=UNIT_RUNNER, dry_run=False,
         runner=lambda argv: ran.append(list(argv)) or 0,
     )
     assert result2 == 0
-    assert ran == [command2] == [command]
+    assert ran == commands2 == commands
+
+
+# ------------------------------------------------ environment and log
+def test_the_unit_form_carries_the_environment_and_the_log(tmp_path: Path) -> None:
+    job = Job(name="scan", argv=["mkvkit", "langid", "scan"],
+              environment={"B_SETTING": "2", "A_SETTING": "one two"},
+              log=tmp_path / "scan.log")
+    command = detached_command(job, program=UNIT_RUNNER)
+    assert "--setenv=A_SETTING=one two" in command
+    assert "--setenv=B_SETTING=2" in command
+    target = (tmp_path / "scan.log").absolute()
+    assert f"--property=StandardOutput=append:{target}" in command
+    assert f"--property=StandardError=append:{target}" in command
+    assert command[-3:] == ["mkvkit", "langid", "scan"]
+    assert command.index("--setenv=A_SETTING=one two") < command.index("mkvkit")
+
+
+@pytest.mark.parametrize("extra", [
+    {"environment": {"A_SETTING": "1"}},
+    {"log": Path("work/scan.log")},
+])
+def test_the_task_form_refuses_what_it_cannot_carry(extra: dict[str, object]) -> None:
+    """Rather than start the job without its environment or with its output lost."""
+    job = Job(name="scan", argv=["mkvkit"], **extra)  # type: ignore[arg-type]
+    with pytest.raises(JobRefused, match="Nothing was created"):
+        detached_command(job, program=WINDOWS_SCHEDULER)
+    ran: list[list[str]] = []
+    with pytest.raises(JobRefused):
+        launch_detached(job, program=WINDOWS_SCHEDULER, dry_run=False,
+                        runner=lambda argv: ran.append(list(argv)) or 0)
+    assert ran == []
+
+
+# ------------------------------------------------ the scheduled-task form
+def test_the_task_is_created_without_overwriting_and_then_run() -> None:
+    """The one-off midnight trigger is in the past, so the run is explicit."""
+    job = Job(name="language scan", argv=["mkvkit", "langid", "scan"])
+    create, start = detached_commands(job, program=WINDOWS_SCHEDULER)
+    assert create[:2] == [WINDOWS_SCHEDULER, "/Create"]
+    assert "/F" not in create
+    assert start == [WINDOWS_SCHEDULER, "/Run", "/TN", "language-scan"]
+
+
+def test_replacing_a_task_is_asked_for_explicitly() -> None:
+    job = Job(name="scan", argv=["mkvkit"])
+    create = detached_command(job, program=WINDOWS_SCHEDULER, replace=True)
+    assert create[:3] == [WINDOWS_SCHEDULER, "/Create", "/F"]
+
+
+def test_an_existing_task_of_the_same_name_is_refused() -> None:
+    ran: list[list[str]] = []
+
+    def exists(argv: object) -> int:
+        ran.append(list(argv))  # type: ignore[call-overload]
+        return 0  # the query found it
+
+    with pytest.raises(JobRefused, match="already exists"):
+        launch_detached(Job(name="scan", argv=["mkvkit"]),
+                        program=WINDOWS_SCHEDULER, dry_run=False, runner=exists)
+    assert ran == [[WINDOWS_SCHEDULER, "/Query", "/TN", "scan"]], "nothing created"
+
+
+def test_a_new_task_is_queried_created_and_run_in_that_order() -> None:
+    ran: list[list[str]] = []
+
+    def runner(argv: object) -> int:
+        command = list(argv)  # type: ignore[call-overload]
+        ran.append(command)
+        return 1 if command[1] == "/Query" else 0
+
+    commands, result = launch_detached(
+        Job(name="scan", argv=["mkvkit"]), program=WINDOWS_SCHEDULER,
+        dry_run=False, runner=runner,
+    )
+    assert result == 0
+    assert [command[1] for command in ran] == ["/Query", "/Create", "/Run"]
+    assert ran[1:] == commands
+
+
+def test_a_failed_create_is_not_followed_by_a_run() -> None:
+    ran: list[list[str]] = []
+
+    def runner(argv: object) -> int:
+        command = list(argv)  # type: ignore[call-overload]
+        ran.append(command)
+        return 1
+
+    _commands, result = launch_detached(
+        Job(name="scan", argv=["mkvkit"]), program=WINDOWS_SCHEDULER,
+        dry_run=False, replace=True, runner=runner,
+    )
+    assert result == 1
+    assert [command[1] for command in ran] == ["/Create"]
 
 
 def test_a_job_knows_which_device_it_reads(tmp_path: Path) -> None:

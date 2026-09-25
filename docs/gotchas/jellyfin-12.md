@@ -589,10 +589,12 @@ beneath it losing its preview tiles, and by queued preview jobs failing.
 removes external files for the item and every recursive child -- including
 when file deletion is configured off.
 
-**Fix.** Back the tiles up first. They can be restored additively afterwards,
-and the built-in generation task imports existing tiles rather than
-regenerating them. `jfkit.maintenance` does the backup and the additive
-restore; it never overwrites and never deletes.
+**Fix.** Back the tiles up first -- an ordinary copy of the tile
+directories; `jfkit` does not take it for you. They can be restored
+additively afterwards, and the built-in generation task imports existing
+tiles rather than regenerating them. `jfkit maintenance previews`
+(`jfkit.maintenance.restore_previews()`) does the additive restore from that
+copy; it never overwrites and never deletes.
 
 **Confirmed.** Reproduced on one series; the restore brought every item back.
 

@@ -164,6 +164,30 @@ def test_a_write_is_logged_and_not_sent(
     assert "Refresh" in caplog.text
 
 
+
+def test_a_dry_run_write_logs_the_body_in_full_with_credentials_hidden(
+    server: tuple[str, Recorder], caplog: pytest.LogCaptureFixture
+) -> None:
+    """The dry run is an account of what would be sent, so the body is in it."""
+    url, recorder = server
+    client = make_client(url)
+    body = {
+        "Name": "Blue Canyon",
+        "Tags": ["one", "two"],
+        "Nested": {"ApiKey": "a-fixture-key-value", "Keep": 3},
+        "Password": "a-fixture-password-value",
+    }
+    with caplog.at_level(logging.INFO):
+        client.post("/Plugins/00000000-0000-0000-0000-000000000301/Configuration", body)
+    assert recorder.requests == []
+    assert '"Name": "Blue Canyon"' in caplog.text
+    assert '"Tags": ["one", "two"]' in caplog.text
+    assert '"Keep": 3' in caplog.text
+    assert "a-fixture-key-value" not in caplog.text
+    assert "a-fixture-password-value" not in caplog.text
+    assert caplog.text.count("<redacted>") == 2
+
+
 def test_a_write_with_apply_is_sent(server: tuple[str, Recorder]) -> None:
     url, recorder = server
     client = make_client(url, dry_run=False)

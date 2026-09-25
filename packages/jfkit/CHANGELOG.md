@@ -52,6 +52,55 @@ day the work was done.
   `libopts set`, `maintenance run`, `maintenance previews`, `segments scope`,
   `segments cancel` -- were never checked for having two states at all. It
   names them now, so removing an `--apply` from any of them fails.
+- **An applied database pass copies and counts after the service has
+  stopped, not before.** The rollback copy and the before-counts were taken
+  while the server was still up, so both described a state from a moment
+  before the one that was rewritten. The order is now stop, copy, count,
+  apply, count, restart.
+- **A generator of operations is applied, not only described.** The
+  describe step consumed it, the apply step found nothing, and the pass
+  reported ok. The operations are listed once.
+- **A dry-run database pass without `--snapshot-dir` reads a temporary copy**
+  and removes it afterwards, instead of describing from the live file through
+  a read-only connection while the runbook said otherwise.
+- **`maintenance run` works with no server configured.** The busy check is
+  skipped when the configuration has no way to get a token, as intended,
+  instead of failing on the missing server. `jobs gate` uses the same test.
+- **Library options with populated per-type options are no longer
+  flattened.** Fetcher lists and image options were read as the whitespace
+  between their elements and sent back that way. The two record lists are now
+  parsed against their known shape and rendered back to prove the
+  round-trip; anything outside that shape is refused rather than written.
+- **Applied writes to server records keep a rollback artefact, always.**
+  `item set --apply` requires `--backup PATH`, `libopts set --apply` requires
+  `--backup-dir DIR`, and `segments scope --apply` requires a new
+  `--backup-dir DIR`; each refuses without it, with the flag to pass, and
+  sends nothing. `segments.scope_plugin()` refuses an applied call without
+  `backup_dir` in the library too, and writes the configuration as it was
+  before posting.
+- **`segments scope` keeps the exclusions that were already there.** It
+  replaced both lists with what the coverage found, dropping every exclusion
+  somebody had set by hand. The new lists are the old ones plus the covered
+  items, without duplicates; a list of another shape is refused.
+- **The dry run logs each write's body**, as the documentation said, with
+  credential-looking values (`token`, `password`, `api_key`, ...) replaced
+  by `<redacted>`. It logged the body's size.
+- **Service control takes the service's name.** `--service windows` and
+  `--service systemd` now need `--service-name NAME` (and `--service-program`
+  selects NSSM); without it the command refuses before anything is stopped.
+  The name was hardcoded, so the Windows controller always failed. NSSM is
+  asked with `status`, which it has, instead of `query`, which it does not.
+- **Detached jobs honour `Job.environment` and `Job.log`** on the
+  transient-unit form (`--setenv=`, output appended to the log), and the
+  scheduled-task form, which cannot carry either, refuses a job that sets
+  one instead of silently dropping it.
+- **A scheduled task is not overwritten, and it actually runs.** The task
+  was created with `/F`, replacing any task of the same name, and with a
+  one-off midnight trigger that is normally already past and no explicit
+  run, so it never started. `launch_detached()` now refuses when a task of
+  that name exists (unless `replace=True`), creates without `/F`, and then
+  starts it with `/Run`. `launch_detached()` returns the list of commands;
+  `detached_commands()` is new.
 
 ## 0.3.0 -- 2026-09-23
 

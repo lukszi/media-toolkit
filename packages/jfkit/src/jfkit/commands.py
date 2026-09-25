@@ -15,6 +15,12 @@ the client: a dry-run client logs every write in full and sends none of them,
 so a whole pipeline can be run against a real server and produce a complete
 account of what it would do.
 
+**An applied write to a server record keeps a rollback.** ``item set``,
+``libopts set`` and ``segments scope`` each refuse ``--apply`` unless they are
+told where to write the state they are about to replace (``--backup``,
+``--backup-dir``, ``--backup-dir``), and they write it before anything is
+sent. A rollback artefact the caller had to remember to ask for is not one.
+
 **The exit code carries the answer.** A refresh that drifted, a swap whose
 record does not match, a deletion whose preconditions failed and a
 maintenance pass whose row counts moved all exit non-zero, because these
@@ -45,9 +51,9 @@ from .jobs import gate as device_gate
 from .report import FORMATS
 from .report import write as write_survey
 from .safedelete import load_manifest, safe_delete
-from .service import controller_for
+from .service import ServiceControlError, ServiceController, controller_for
 
-__all__ = ["REGISTRARS", "add_write_arguments", "client_from"]
+__all__ = ["REGISTRARS", "add_service_arguments", "add_write_arguments", "client_from"]
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +66,43 @@ def add_write_arguments(parser: argparse.ArgumentParser) -> None:
         help="say what would happen and change nothing (the default)",
     )
     group.add_argument("--apply", dest="apply", action="store_true", help="actually write")
+
+
+def _refuse_without(args: argparse.Namespace, attribute: str, flag: str) -> bool:
+    """Say so and return true when ``--apply`` came without its rollback flag."""
+    if getattr(args, "apply", False) and getattr(args, attribute) is None:
+        print(
+            f"--apply writes the state it replaces first: name {flag}. "
+            "Nothing was sent."
+        )
+        return True
+    return False
+
+
+def add_service_arguments(parser: argparse.ArgumentParser) -> None:
+    """Which controller stops the service, and the service's registered name."""
+    parser.add_argument("--service", default="manual",
+                        choices=["manual", "windows", "systemd"])
+    parser.add_argument(
+        "--service-name", metavar="NAME",
+        help="the service's registered name; required by every controller but "
+             "the manual one",
+    )
+    parser.add_argument(
+        "--service-program", metavar="PROGRAM",
+        help="with --service windows: the control program, sc (the default) "
+             "or the NSSM executable the service was installed with",
+    )
+
+
+def server_configured(config: Config) -> bool:
+    """Whether the configuration describes a server a client could talk to.
+
+    The address has a default, so its presence says nothing; a way to get a
+    token is what only a configuration that means a server carries.
+    """
+    server = config.server
+    return bool(server.url and (server.token_env or server.token_command))
 
 
 def client_from(args: argparse.Namespace, config: Config) -> Client:
@@ -100,7 +143,8 @@ def _register_item(subparsers: argparse._SubParsersAction) -> None:  # type: ign
     write.add_argument("item_id")
     write.add_argument("--field", action="append", default=[], metavar="KEY=VALUE")
     write.add_argument("--backup", type=Path, metavar="PATH",
-                       help="where to write the record as it was, before changing it")
+                       help="where to write the record as it was, before changing "
+                            "it; required with --apply")
     add_write_arguments(write)
     write.set_defaults(handler=_item_set)
 
@@ -120,6 +164,8 @@ def _item_show(args: argparse.Namespace, config: Config) -> int:
 
 
 def _item_set(args: argparse.Namespace, config: Config) -> int:
+    if _refuse_without(args, "backup", "--backup PATH"):
+        return 2
     client = client_from(args, config)
     phases = update_item(
         client, args.item_id, _fields_from(args.field),
@@ -248,7 +294,9 @@ def _register_libopts(subparsers: argparse._SubParsersAction) -> None:  # type: 
     write.add_argument("document", type=Path)
     write.add_argument("--id", required=True, dest="library_id")
     write.add_argument("--field", action="append", default=[], metavar="KEY=VALUE")
-    write.add_argument("--backup-dir", type=Path, metavar="DIR")
+    write.add_argument("--backup-dir", type=Path, metavar="DIR",
+                       help="where to copy the document before the write; "
+                            "required with --apply")
     add_write_arguments(write)
     write.set_defaults(handler=_libopts_set)
 
@@ -276,6 +324,8 @@ def _libopts_roots(args: argparse.Namespace, config: Config) -> int:
 
 
 def _libopts_set(args: argparse.Namespace, config: Config) -> int:
+    if _refuse_without(args, "backup_dir", "--backup-dir DIR"):
+        return 2
     options = libopts_module.read_options(args.document, library_id=args.library_id)
     result = libopts_module.write_options(
         client_from(args, config), options, _fields_from(args.field),
@@ -308,8 +358,7 @@ def _register_maintenance(subparsers: argparse._SubParsersAction) -> None:  # ty
                      help="rewrite stored paths after the data directory moved")
     run.add_argument("--expect-rows", type=int, metavar="N")
     run.add_argument("--snapshot-dir", type=Path, metavar="DIR")
-    run.add_argument("--service", default="manual",
-                     choices=["manual", "windows", "systemd"])
+    add_service_arguments(run)
     add_write_arguments(run)
     run.set_defaults(handler=_maintenance_run)
 
@@ -350,16 +399,29 @@ def _maintenance_run(args: argparse.Namespace, config: Config) -> int:
     if args.apply and args.snapshot_dir is None:
         print("--apply copies the database first: name --snapshot-dir DIR")
         return 2
-    client = client_from(args, config)
+    # The server is asked whether it is busy when one is configured, and
+    # not otherwise: the pass itself needs nothing but the file.
+    client = client_from(args, config) if server_configured(config) else None
+    try:
+        controller = _controller(args)
+    except ServiceControlError as refused:
+        print(str(refused))
+        return 2
     report = maintenance_module.run_operations(
         args.database, operations,
-        controller=controller_for(args.service),
+        controller=controller,
         snapshot_dir=args.snapshot_dir,
         dry_run=not args.apply,
-        client=client if config.server.url else None,
+        client=client,
     )
     print(report)
     return 0 if report.ok else 1
+
+
+def _controller(args: argparse.Namespace) -> ServiceController:
+    return controller_for(
+        args.service, name=args.service_name, program=args.service_program
+    )
 
 
 def _maintenance_previews(args: argparse.Namespace, _config: Config) -> int:
@@ -388,13 +450,17 @@ def _register_swap(subparsers: argparse._SubParsersAction) -> None:  # type: ign
     parser.add_argument("--user", action="append", default=[], metavar="ID",
                         help="a user whose play state is snapshotted and replayed "
                         "(default: every user the server lists)")
-    parser.add_argument("--service", default="manual",
-                        choices=["manual", "windows", "systemd"])
+    add_service_arguments(parser)
     add_write_arguments(parser)
     parser.set_defaults(handler=_swap)
 
 
 def _swap(args: argparse.Namespace, config: Config) -> int:
+    try:
+        controller = _controller(args)
+    except ServiceControlError as refused:
+        print(str(refused))
+        return 2
     pairs = []
     for line in args.plan.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -407,7 +473,7 @@ def _swap(args: argparse.Namespace, config: Config) -> int:
         )
     report = swap_module.swap(
         client_from(args, config), pairs,
-        controller=controller_for(args.service),
+        controller=controller,
         parked=args.parked, chunk_gib=args.chunk_gib,
         users=args.user, mib_per_second=args.rate, budget_s=args.budget,
     )
@@ -458,6 +524,9 @@ def _register_segments(subparsers: argparse._SubParsersAction) -> None:  # type:
                        help="part of the plugin's name; never an identifier")
     scope.add_argument("--fraction", type=float,
                        default=segments_module.COVERED_FRACTION)
+    scope.add_argument("--backup-dir", type=Path, metavar="DIR",
+                       help="where to write the plugin's configuration as it was, "
+                            "before changing it; required with --apply")
     add_write_arguments(scope)
     scope.set_defaults(handler=_segments_scope)
 
@@ -475,6 +544,8 @@ def _segments_tasks(args: argparse.Namespace, config: Config) -> int:
 
 
 def _segments_scope(args: argparse.Namespace, config: Config) -> int:
+    if _refuse_without(args, "backup_dir", "--backup-dir DIR"):
+        return 2
     client = client_from(args, config)
     plugin = segments_module.find_plugin(client, args.plugin)
     items = surveys_module.fetch_items(client, types=("Movie", "Episode"))
@@ -484,7 +555,9 @@ def _segments_scope(args: argparse.Namespace, config: Config) -> int:
     ]
     found = segments_module.coverage(items, covered, fraction=args.fraction)
     print(found)
-    print(segments_module.scope_plugin(client, plugin, found))
+    print(segments_module.scope_plugin(
+        client, plugin, found, backup_dir=args.backup_dir
+    ))
     return 0
 
 
@@ -523,7 +596,7 @@ def _register_jobs(subparsers: argparse._SubParsersAction) -> None:  # type: ign
 
 def _jobs_gate(args: argparse.Namespace, config: Config) -> int:
     running: list[str] = []
-    if not args.ignore_server and config.server.url:
+    if not args.ignore_server and server_configured(config):
         running = [task.name for task in
                    segments_module.running(client_from(args, config))]
     found = device_gate(device_of(args.path), running_tasks=running, own_tag=args.tag)

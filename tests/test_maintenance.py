@@ -295,6 +295,112 @@ def test_an_idle_server_is_not_in_the_way(server: tuple[str, Recorder]) -> None:
     assert running_tasks(client_for(url)) == []
 
 
+
+class RecordingController:
+    """A controller that writes down when it was asked to stop and start."""
+
+    name = "the stand-in"
+
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.running = True
+
+    def is_running(self) -> bool:
+        return self.running
+
+    def stop(self, *, timeout: float = 0.0) -> None:
+        self.calls.append("stop")
+        self.running = False
+
+    def start(self, *, timeout: float = 0.0) -> None:
+        self.calls.append("start")
+        self.running = True
+
+
+def test_the_copy_and_the_counts_are_taken_after_the_service_stops(
+    database: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stop, copy, count, apply, count, restart -- in that order.
+
+    A copy taken while the service is still up is of a file that can change
+    before the write, so it is not the state the write replaced.
+    """
+    import jfkit.maintenance as module
+
+    calls: list[str] = []
+    real_snapshot, real_counts = module.snapshot, module.counts
+
+    def recording_snapshot(db: Path | str, out: Path | str) -> Path:
+        calls.append("snapshot")
+        return real_snapshot(db, out)
+
+    def recording_counts(db: Path | str, *args: object) -> dict[str, int]:
+        calls.append("counts")
+        return real_counts(db)
+
+    monkeypatch.setattr(module, "snapshot", recording_snapshot)
+    monkeypatch.setattr(module, "counts", recording_counts)
+
+    class Recorded(Reindex):
+        def apply(self, connection: sqlite3.Connection) -> int:
+            calls.append("apply")
+            return super().apply(connection)
+
+    report = run_operations(
+        database, [Recorded()], controller=RecordingController(calls),
+        snapshot_dir=tmp_path / "copies", dry_run=False,
+    )
+    assert report.ok, str(report)
+    assert calls == ["stop", "snapshot", "counts", "apply", "counts", "start"]
+
+
+def test_a_generator_of_operations_is_applied_not_just_described(
+    database: Path, controller: ManualServiceController, tmp_path: Path
+) -> None:
+    """Walked twice, a generator is empty the second time; it is listed once."""
+    operations = (
+        op for op in [RepointPaths(OLD_ROOT, NEW_ROOT, expect_rows=2,
+                                   exists=always_there)]
+    )
+    report = run_operations(
+        database, operations, controller=controller,
+        snapshot_dir=tmp_path / "copies", dry_run=False,
+    )
+    assert report.ok and report.rows_touched == 2
+    with read_only(database) as connection:
+        left = connection.execute(
+            "SELECT COUNT(*) FROM BaseItems WHERE Path LIKE ?", (OLD_ROOT + "%",)
+        ).fetchone()[0]
+    assert left == 0
+
+
+def test_describing_without_a_copy_directory_reads_a_temporary_copy(
+    database: Path, controller: ManualServiceController,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The only connection to the live file is the one that writes the copy."""
+    import jfkit.maintenance as module
+
+    opened: list[Path] = []
+    real_read_only = module.read_only
+
+    def recording(db: Path | str):  # type: ignore[no-untyped-def]
+        opened.append(Path(db))
+        return real_read_only(db)
+
+    monkeypatch.setattr(module, "read_only", recording)
+    report = run_operations(
+        database,
+        [RepointPaths(OLD_ROOT, NEW_ROOT, expect_rows=2, exists=always_there)],
+        controller=controller,
+    )
+    assert not report.applied and report.snapshot is None
+    assert any(NEW_ROOT in line for line in report.description)
+    assert opened[0] == database, "the copy is written from the live file"
+    assert opened[1:] and all(path != database for path in opened[1:])
+    assert not opened[1].exists(), "the temporary copy is removed afterwards"
+
+
 # ---------------------------------------------------------------- the tiles
 def _tiles(root: Path, item: str, names: list[str]) -> None:
     directory = root / f"{item}{PREVIEW_SUFFIX}"

@@ -293,3 +293,110 @@ def test_the_stand_in_writes_a_document_the_parser_reads(tmp_path: Path) -> None
     values, _named, unknown = parse_options(document.read_text(encoding="utf-8"))
     assert not unknown
     assert values["SeasonZeroDisplayName"] == "Specials"
+
+
+# ------------------------------------------------------------ record lists
+#: A document with the two record lists populated the way a server writes
+#: them: per-type fetcher lists, and image options with numbers in them.
+POPULATED = """<LibraryOptions>
+  <EnableEmbeddedTitles>true</EnableEmbeddedTitles>
+  <PathInfos>
+    <MediaPathInfo>
+      <Path>/srv/media/movies</Path>
+    </MediaPathInfo>
+  </PathInfos>
+  <TypeOptions>
+    <TypeOptions>
+      <Type>Movie</Type>
+      <MetadataFetchers>
+        <string>Example Metadata</string>
+        <string>Other Metadata</string>
+      </MetadataFetchers>
+      <MetadataFetcherOrder>
+        <string>Other Metadata</string>
+        <string>Example Metadata</string>
+      </MetadataFetcherOrder>
+      <ImageFetchers>
+        <string>Example Images</string>
+      </ImageFetchers>
+      <ImageFetcherOrder>
+        <string>Example Images</string>
+      </ImageFetcherOrder>
+      <ImageOptions>
+        <ImageOption>
+          <Type>Backdrop</Type>
+          <Limit>3</Limit>
+          <MinWidth>1280</MinWidth>
+        </ImageOption>
+        <ImageOption>
+          <Type>Primary</Type>
+          <Limit>1</Limit>
+          <MinWidth>0</MinWidth>
+        </ImageOption>
+      </ImageOptions>
+    </TypeOptions>
+  </TypeOptions>
+</LibraryOptions>
+"""
+
+EXPECTED_TYPE_OPTIONS = [{
+    "Type": "Movie",
+    "MetadataFetchers": ["Example Metadata", "Other Metadata"],
+    "MetadataFetcherOrder": ["Other Metadata", "Example Metadata"],
+    "ImageFetchers": ["Example Images"],
+    "ImageFetcherOrder": ["Example Images"],
+    "ImageOptions": [
+        {"Type": "Backdrop", "Limit": 3, "MinWidth": 1280},
+        {"Type": "Primary", "Limit": 1, "MinWidth": 0},
+    ],
+}]
+
+
+def test_populated_type_options_are_sent_back_unchanged(
+    server: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    """Fetcher lists stay lists and image options stay records with numbers.
+
+    Reading ``.text`` off each element used to turn every list into the
+    whitespace between its children, and the write sent that back.
+    """
+    url, recorder = server
+    document = tmp_path / "options.xml"
+    document.write_text(POPULATED, encoding="utf-8")
+    options = read_options(document, library_id=LIBRARY_ID, name="Movies")
+    assert options.unknown == ()
+    assert options["TypeOptions"] == EXPECTED_TYPE_OPTIONS
+    assert options["PathInfos"] == [{"Path": "/srv/media/movies"}]
+
+    write_options(client_for(url, dry_run=False), options,
+                  {"EnableEmbeddedTitles": False})
+    [(library_id, sent)] = recorder.options_writes
+    assert library_id == LIBRARY_ID
+    assert sent["TypeOptions"] == EXPECTED_TYPE_OPTIONS
+    assert sent["PathInfos"] == [{"Path": "/srv/media/movies"}]
+    assert sent["EnableEmbeddedTitles"] is False
+
+
+@pytest.mark.parametrize("inner", [
+    "<Type>Movie</Type><SomethingNewer><string>x</string></SomethingNewer>",
+    "<Type>Movie</Type><ImageOptions><ImageOption><Type>Primary</Type>"
+    "<Limit>one</Limit></ImageOption></ImageOptions>",
+    "<Type>Movie</Type><MetadataFetchers><value>x</value></MetadataFetchers>",
+    '<Type kind="odd">Movie</Type>',
+])
+def test_a_record_list_that_cannot_round_trip_is_refused(
+    server: tuple[str, Recorder], tmp_path: Path, inner: str
+) -> None:
+    url, recorder = server
+    document = tmp_path / "options.xml"
+    document.write_text(
+        f"<LibraryOptions><TypeOptions><TypeOptions>{inner}</TypeOptions>"
+        "</TypeOptions></LibraryOptions>",
+        encoding="utf-8",
+    )
+    options = read_options(document, library_id=LIBRARY_ID, name="Movies")
+    assert options.unknown
+    with pytest.raises(ValueError, match="does not know"):
+        write_options(client_for(url, dry_run=False), options,
+                      {"EnableEmbeddedTitles": True})
+    assert recorder.options_writes == []

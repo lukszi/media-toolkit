@@ -22,7 +22,8 @@ user-scoped route returns everything, so it is the default, and asking for the
 unscoped one is an explicit act.
 
 **Writes are opt-in.** A client is constructed in dry-run mode. In that state
-every mutating request is logged, in full, and not sent -- so a pipeline can be
+every mutating request is logged, in full -- body included, with any
+credential-looking value in it replaced -- and not sent, so a pipeline can be
 run end to end against a real server and produce a complete account of what it
 *would* do, which is the only kind of dry run worth having. ``--apply`` builds
 a client with ``dry_run=False``. There is no third state.
@@ -39,6 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -52,7 +54,7 @@ from mkvkit.logging import register_secret
 from .config import Config, require_server
 from .errors import ItemNotFound, ServerRefused
 
-__all__ = ["Client", "Retry", "UrlOpener"]
+__all__ = ["Client", "Retry", "UrlOpener", "redacted"]
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +63,32 @@ UrlOpener = Callable[..., Any]
 
 #: Requests that change nothing and may safely be repeated.
 IDEMPOTENT = frozenset({"GET", "HEAD"})
+
+
+#: Body keys whose values are credentials. Matched case-insensitively on
+#: the key, anywhere in the body, and replaced before a body is logged.
+SECRET_KEY = re.compile(r"token|password|passwd|secret|api_?key|credential", re.I)
+REDACTED = "<redacted>"
+
+
+def redacted(body: Any) -> Any:
+    """A copy of a body with every credential-looking value replaced.
+
+    The dry run logs each write's body in full, which is what makes it an
+    account of what would happen; a body that carries a credential -- a
+    plugin configuration with an API key in it, say -- must not put it in a
+    log file on the way. The token the client itself holds is never in a
+    body, and the logging filter hides it anyway once it has been resolved.
+    """
+    if isinstance(body, Mapping):
+        return {
+            key: REDACTED if isinstance(key, str) and SECRET_KEY.search(key)
+            and value not in (None, "") else redacted(value)
+            for key, value in body.items()
+        }
+    if isinstance(body, list | tuple):
+        return [redacted(value) for value in body]
+    return body
 
 
 @dataclass(frozen=True)
@@ -144,7 +172,8 @@ class Client:
         if method not in IDEMPOTENT and self.dry_run:
             log.info(
                 "dry run: would %s %s%s", method, url,
-                f" with {len(json.dumps(body))} bytes of body" if body is not None else "",
+                "" if body is None else " with body "
+                + json.dumps(redacted(body), ensure_ascii=False, sort_keys=True),
             )
             return None
 

@@ -27,6 +27,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import PurePath
 from typing import Protocol, runtime_checkable
 
 __all__ = [
@@ -115,9 +116,14 @@ class ManualServiceController:
 class WindowsServiceController:
     """Drive a Windows service through the service-control program, or through NSSM.
 
-    Both take the same three verbs in the same argument position, so one
-    implementation covers a service registered either way: pass the NSSM
+    ``name`` is the service's registered name, which is per-installation and
+    so always the caller's to give -- nothing here guesses it. Pass the NSSM
     executable as ``program`` when the service was installed with it.
+
+    The two programs share ``stop`` and ``start`` but not the state query:
+    the service-control program answers ``query NAME`` with a ``STATE`` line,
+    and NSSM answers ``status NAME`` with a single word such as
+    ``SERVICE_RUNNING``. Both are read here and reduced to the same two words.
 
     State is read from the control program rather than inferred from the exit
     code of the stop verb, which returns as soon as the request is accepted --
@@ -128,6 +134,10 @@ class WindowsServiceController:
 
     name: str
     program: str = "sc"
+
+    @property
+    def _is_nssm(self) -> bool:
+        return PurePath(self.program).stem.lower() == "nssm"
 
     def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
         executable = shutil.which(self.program)
@@ -141,11 +151,17 @@ class WindowsServiceController:
         )
 
     def _state(self) -> str:
-        completed = self._run("query", self.name)
+        completed = self._run("status" if self._is_nssm else "query", self.name)
         if completed.returncode != 0:
             raise ServiceControlError(
                 f"cannot read the state of {self.name} (exit {completed.returncode})"
             )
+        if self._is_nssm:
+            for line in completed.stdout.replace("\x00", "").splitlines():
+                word = line.strip().upper()
+                if word.startswith("SERVICE_"):
+                    return word[len("SERVICE_"):]
+            raise ServiceControlError(f"no state reported for {self.name}")
         for line in completed.stdout.splitlines():
             if "STATE" in line.upper():
                 return line.split(":")[-1].strip().split()[-1].upper()
@@ -207,14 +223,27 @@ class SystemdServiceController:
         raise self._unsupported("starting")
 
 
-def controller_for(kind: str = "manual", *, name: str = "the media server") -> ServiceController:
-    """Pick an implementation by name. ``manual`` is the default, on purpose."""
+def controller_for(
+    kind: str = "manual", *, name: str | None = None, program: str | None = None
+) -> ServiceController:
+    """Pick an implementation by name. ``manual`` is the default, on purpose.
+
+    Every kind but the manual one drives a real service, and a real service
+    has a registered name that is the operator's to give: there is no
+    default, and asking for one without a name is refused here rather than
+    failing later against a service called something nobody has.
+    """
     if kind == "manual":
-        return ManualServiceController(name=name)
+        return ManualServiceController(name=name or "the media server")
+    if kind not in ("windows", "systemd"):
+        raise ServiceControlError(f"unknown service controller {kind!r}")
+    if not name:
+        raise ServiceControlError(
+            f"the {kind} controller needs the service's registered name: "
+            "pass --service-name NAME"
+        )
     if kind == "windows":
         if sys.platform != "win32":
             raise ServiceControlError("the Windows controller needs a Windows host")
-        return WindowsServiceController(name=name)
-    if kind == "systemd":
-        return SystemdServiceController(name=name)
-    raise ServiceControlError(f"unknown service controller {kind!r}")
+        return WindowsServiceController(name=name, program=program or "sc")
+    return SystemdServiceController(name=name)

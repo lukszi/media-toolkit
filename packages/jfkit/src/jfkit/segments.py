@@ -29,9 +29,12 @@ and the gate counts the server's own background work as the reader it is.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from .client import Client
@@ -126,13 +129,20 @@ class ScopeReport:
     movies_excluded: int = 0
     before: Mapping[str, Any] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
+    #: exclusions the configuration already carried, kept in the new lists
+    kept: int = 0
+    #: where the configuration as it was was written before the change
+    backup: Path | None = None
 
     def __str__(self) -> str:
         head = "written" if self.applied else "dry run, nothing written"
         lines = [
             f"{self.plugin_id}: {head}; excluding {self.series_excluded} series "
             f"and {self.movies_excluded} film(s) that are already covered"
+            + (f", keeping {self.kept} exclusion(s) already there" if self.kept else "")
         ]
+        if self.backup is not None:
+            lines.append(f"  the configuration as it was is at {self.backup}")
         lines += [f"  note: {n}" for n in self.notes]
         return "\n".join(lines)
 
@@ -277,23 +287,58 @@ def scope_plugin(
     plugin: Mapping[str, Any],
     found: Coverage,
     *,
+    backup_dir: Path | str | None = None,
     series_key: str = "SeriesExclusions",
     movie_key: str = "MovieExclusions",
     auto_key: str = "AutoDetectIntros",
 ) -> ScopeReport:
-    """Write the exclusion lists the coverage implies, and leave automatic detection off.
+    """Add the exclusions the coverage implies, and leave automatic detection off.
 
     The configuration is read whole and sent back whole, for the same reason
     every other record in this package is: a key left out of the body is not
     left alone.
+
+    **Exclusions already there are kept.** Somebody put them there -- a
+    series nobody wants analysed, a film whose segments were placed by hand
+    -- and the coverage cannot know why. The new lists are the old ones plus
+    whatever the coverage adds, in that order, without duplicates. An
+    exclusion value that is not a list is refused rather than guessed at.
+
+    **An applied write keeps a rollback.** The configuration as it was is
+    written to ``backup_dir`` before anything is sent, and an applied call
+    without one is refused before anything is sent.
     """
     plugin_id = str(plugin.get("Id") or "")
     if not plugin_id:
         raise ValueError("this plugin record has no identifier")
+    if not client.dry_run and backup_dir is None:
+        raise ValueError(
+            "an applied scope writes the plugin's configuration as it was first "
+            "and needs somewhere to put it: pass backup_dir (--backup-dir DIR). "
+            "Nothing was sent."
+        )
     before = client.get(f"/Plugins/{plugin_id}/Configuration") or {}
     body = dict(before)
-    body[series_key] = list(found.covered_series)
-    body[movie_key] = list(found.covered_movies)
+    kept = 0
+    for key, adding in (
+        (series_key, found.covered_series), (movie_key, found.covered_movies)
+    ):
+        existing = before.get(key)
+        if existing is None:
+            existing = []
+        if not isinstance(existing, list):
+            raise ValueError(
+                f"{key} is {type(existing).__name__}, not a list; refusing to merge "
+                "exclusions into a shape this does not understand. Nothing was sent."
+            )
+        kept += len(existing)
+        merged = list(existing)
+        seen = {_bare(str(value)) for value in existing}
+        for value in adding:
+            if _bare(value) not in seen:
+                merged.append(value)
+                seen.add(_bare(value))
+        body[key] = merged
     notes: list[str] = []
     if auto_key in body and body.get(auto_key):
         body[auto_key] = False
@@ -301,6 +346,10 @@ def scope_plugin(
             f"{auto_key} was on: it analyses everything the exclusions do not "
             "cover, whenever it likes, which is the opposite of scoping a pass"
         )
+    backup = (
+        _save_configuration(before, backup_dir, str(plugin.get("Name") or plugin_id))
+        if backup_dir is not None and not client.dry_run else None
+    )
     client.post(f"/Plugins/{plugin_id}/Configuration", body)
     return ScopeReport(
         plugin_id=plugin_id,
@@ -309,7 +358,26 @@ def scope_plugin(
         movies_excluded=len(found.covered_movies),
         before=before,
         notes=tuple(notes),
+        kept=kept,
+        backup=backup,
     )
+
+
+def _save_configuration(
+    configuration: Mapping[str, Any], directory: Path | str, name: str
+) -> Path:
+    """Write a plugin's configuration aside, stamped, never over another one."""
+    out = Path(directory)
+    out.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    safe = "".join(c if c.isalnum() or c in "-_." else "-" for c in name).strip("-")
+    target = out / f"{safe or 'plugin'}.configuration.{stamp}.json"
+    with target.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            json.dumps(dict(configuration), ensure_ascii=False, indent=1,
+                       sort_keys=True) + "\n"
+        )
+    return target
 
 
 # --------------------------------------------------------------- the switch
