@@ -29,14 +29,20 @@ token_env = "JFKIT_TOKEN"
 # user by default: an unscoped listing silently omits items.
 user_id = "00000000-0000-0000-0000-000000000000"
 
-# Where the server keeps its own data, for the read-only upkeep commands.
-data_dir = "/var/lib/jellyfin"
+# The server's own data directory is not read from this file: the command that
+# needs it, `jfkit libopts roots`, takes it as --data-dir.
 
 [tools]
-# A name resolved on the PATH, or an absolute path. Anything left out is
-# discovered: PATH first, then the usual install locations for the platform.
-# The environment overrides this file: MKVKIT_FFMPEG, MKVKIT_MKVMERGE, and so
-# on.
+# A name resolved on the PATH, or an absolute path. Each program is looked for
+# in this order, and the first one that exists wins:
+#
+#   this [tools] entry  ->  MKVKIT_<NAME> in the environment (MKVKIT_FFMPEG,
+#   MKVKIT_MKVMERGE, ...)  ->  the PATH  ->  the usual install locations for
+#   the platform
+#
+# So this file wins over the environment; an entry here that names nothing
+# that exists falls through to the next step, and the error for a program found
+# nowhere lists every place that was tried.
 ffmpeg = "ffmpeg"
 ffprobe = "ffprobe"
 mkvmerge = "mkvmerge"
@@ -48,7 +54,6 @@ movies = "/srv/media/movies"
 series = "/srv/media/series"
 staging = "/srv/staging"     # where a rebuild is assembled before it is swapped in
 parked = "/srv/parked"       # where a replaced original is moved, and stays
-work = "./work"              # logs, caches, evidence
 
 [policy]
 keep_languages = ["eng", "deu"]   # never dropped from a rebuild
@@ -66,6 +71,8 @@ device = "auto"                   # auto, cpu or cuda
 min_conf = 0.92
 override_conf = 0.97
 
-[jobs]
-device_gate = true                # one heavy reader per storage device at a time
-max_readers_per_device = 1
+# Three more keys are accepted, so that a file carrying them still loads, but
+# no command reads them yet, and setting them changes nothing: [server] data_dir,
+# [paths] work, and the whole of [jobs]. Where logs and evidence go is given
+# per command (--out, --log-file, --audit), the data directory is a flag, and
+# the device gate always allows one heavy reader per device.

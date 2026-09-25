@@ -3,13 +3,14 @@
 Everything here is invented: the film, the paths, the identifiers and the
 numbers. It is a worked example of the shape of a job, not a record of one.
 
-**The job.** `The Quiet Harbour (1978)` is a 31 GiB file with five audio
-tracks. Four of them are dubbed tracks in languages this library has no use
-for, and they are 9 GiB of the file. The job is to keep English and German,
-drop the rest, and end up with the same item in the catalogue -- same identifier, same play state, same
-poster, same name.
+**The job.** `The Quiet Harbour (1978)` is a 23 GiB file with five audio
+tracks: the original English, a German dub that stays, and three more dubs in
+languages nobody watching it uses -- one of them not even labelled. The job is
+to keep English and German, drop the other three, and end up with the same
+item in the catalogue -- same identifier, same play state, same poster, same
+name.
 
-**What it costs.** Three commands that read, two that write, and about
+**What it costs.** A handful of commands, most of which only read, and about
 fifteen minutes, of which the server is down for two.
 
 ---
@@ -35,71 +36,133 @@ for it. Two heavy readers on one spinning disk is slower than one, by a lot.
 jfkit survey audio-languages --format md
 ```
 
+The rows of that document (it also carries its scope, a summary and its
+caveats):
+
 ```
-| Item              | Stream | Claimed language | Codec | Channels | Default | Labelled | Estimated size (MiB) |
-|-------------------|--------|------------------|-------|----------|---------|----------|----------------------|
-| The Quiet Harbour | 1      | eng              | dts   | 6        | yes     | yes      | 2461.5               |
-| The Quiet Harbour | 2      | deu              | ac3   | 6        | no      | yes      | 1230.8               |
-| The Quiet Harbour | 3      | fra              | ac3   | 6        | no      | yes      | 1230.8               |
-| The Quiet Harbour | 4      | ita              | ac3   | 2        | no      | yes      | 615.4                |
-| The Quiet Harbour | 5      |                  | ac3   | 6        | no      | no       | 1230.8               |
+| Item | Type | Stream | Claimed language | Codec | Channels | Default | Labelled | Estimated size (MiB) |
+|---|---|---|---|---|---|---|---|---|
+| The Quiet Harbour | Movie | 1 | eng | dts | 6 | yes | yes | 1165.7 |
+| The Quiet Harbour | Movie | 2 | deu | ac3 | 6 | no | yes | 494.4 |
+| The Quiet Harbour | Movie | 3 | fra | ac3 | 6 | no | yes | 494.4 |
+| The Quiet Harbour | Movie | 4 | ita | ac3 | 2 | no | yes | 148.3 |
+| The Quiet Harbour | Movie | 5 | (none) | ac3 | 6 | no | no | 494.4 |
 ```
 
 Stream 5 claims nothing. **Do not guess.** A language code is a claim made by
 whoever tagged the track, and an unlabelled track is a track nobody tagged --
-which says nothing about what is on it. Identify it before deciding:
+which says nothing about what is on it. Identify it before deciding. The pass
+is three commands: list the tracks, listen to them, decide. Only the middle
+one needs the speech model (`mkvkit[langid]`); the other two run with nothing
+installed.
 
 ```
-mkvkit langid scan "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
-    --stream 5 --results work/langid.jsonl
-mkvkit langid report --results work/langid.jsonl
+mkvkit langid jobs "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
+    --only-unknown --out work/langid-jobs.jsonl
+mkvkit langid scan --jobs work/langid-jobs.jsonl --out work/langid.jsonl
+mkvkit langid report --results work/langid.jsonl --out-dir work/langid
 ```
 
 ```
-stream 5: spa   confidence 0.981   margin 0.94   16/16 windows agree   CONFIRM
+1 track(s) -> work/langid-jobs.jsonl
+1 of 1 track(s) to read
+1 track(s) -> work/langid.jsonl
+1 track(s) -> work/langid
 ```
 
-Spanish. It goes.
+(The log lines each command writes beside that are left out here.) The
+decision is in `work/langid/langid-results.tsv`, one row per track, and
+`work/langid/langid-report.md` is the summary a person reads first:
+
+```
+path	stream_index	existing_tag	detected	verdict	rule	confidence	margin	agreement	counted_windows	reason
+/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv	5		spa	settle	audio.standard	0.9810	0.9690	1.00	5	counted 5>=5, conf 0.981>=0.92, margin 0.969>=0.50, agree 1.00>=0.80
+```
+
+Spanish, settled on the standard bar by all five windows. The report proposes
+the tag; writing it is a separate, deliberate step. `mkvkit probe` gives the
+identifier the track carries:
+
+```
+mkvkit probe "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv"
+```
+
+```
+  track  5 audio     AC-3                 und  und  uid 5555555555555555555
+```
+
+and a header edit writes the language in place, dry run first:
+
+```
+mkvkit propedit "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
+    --track 1938578109198179986 --language spa
+mkvkit propedit "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
+    --track 1938578109198179986 --language spa --apply
+```
+
+```
+keeper.mkv: dry run, 1 change(s)
+  note: dry run: nothing was written
+keeper.mkv: applied, 1 change(s)
+```
+
+Now it is a Spanish track, and it goes.
 
 ## 2. Build the replacement somewhere else
 
+A rebuild drops nothing that a policy does not name, so the configuration
+says which languages may go:
+
+```toml
+[policy]
+keep_languages      = ["eng", "deu"]
+droppable_languages = ["fra", "ita", "spa"]
+default_audio       = "eng"
+```
+
+The original language is given on the command line, every time, because it is
+the one language that must never be dropped and it is not something to guess:
+
 ```
 mkvkit remux "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
-    --staging /srv/staging --keep-language eng --keep-language deu --apply
+    --staging /srv/staging --original-language eng --apply
 ```
 
 ```
-staged /srv/staging/keeper.mkv
-  kept 2 of 5 audio tracks, 1 video, 3 subtitles, 16 chapters
-  22.1 GiB (was 31.2 GiB)
-verify it with:
-  mkvkit verify "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
-      /srv/staging/keeper.mkv --dropped 3 --dropped 4 --dropped 5
+keeper.mkv -> /srv/staging/keeper.mkv
+  track 1 (eng): keep -- it is the original language (eng)
+  track 2 (deu): keep -- deu is kept by policy
+  track 3 (fra): drop -- fra is droppable and is not the original language
+  track 4 (ita): drop -- ita is droppable and is not the original language
+  track 5 (spa): drop -- spa is droppable and is not the original language
+  built /srv/staging/keeper.mkv
+  now verify it:  mkvkit verify /srv/media/movies/The Quiet Harbour (1978)/keeper.mkv /srv/staging/keeper.mkv --dropped 3,4,5
 ```
 
 The rebuild prints the verify command for what it just built, with the dropped
-streams already filled in, because that is the step people skip.
+streams already filled in, because that is the step people skip. It prints the
+paths as they are, unquoted: put the quotes back around a path with spaces or
+parentheses in it before running the line.
 
 ## 3. Prove the difference is the one you asked for
 
 ```
 mkvkit verify "/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv" \
-    /srv/staging/keeper.mkv --dropped 3 --dropped 4 --dropped 5
+    /srv/staging/keeper.mkv --dropped 3,4,5
 ```
 
 ```
-16 kept stream(s): every hash matches
-chapters: 16 marks, all within 1 ms, names unchanged
-notes:
-  the container duration shrank by 0.004 s: the dropped tracks ran past the
-  rest, which is what removing them should do
-  track identifiers were regenerated: nothing outside the file references them
-PASS
+PASS (tracks dropped): 16 stream(s) compared by hash
+  note: 24 tag value(s) belonged to tracks that are not in the new file and went with them
 ```
 
-Note what this is *not*: a size comparison. The rebuilt file is 9 GiB smaller,
-which proves nothing at all. What proves it is that the streams that were kept
-hash identically on both sides.
+The dropped streams are one comma-separated list. Giving `--dropped` once per
+stream keeps only the last one, and the verification then fails -- correctly,
+because it was told that a single stream went.
+
+Note what this is *not*: a size comparison. The rebuilt file is about a
+gigabyte smaller, which proves nothing at all. What proves it is that the
+sixteen streams that were kept hash identically on both sides.
 
 ## 4. Swap it in
 
@@ -112,8 +175,13 @@ jfkit swap plan.tsv --parked /srv/parked --rate 180 --budget 300 \
 with `plan.tsv`:
 
 ```
-00000000-0000-0000-0000-000000000007	/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv	/srv/staging/keeper.mkv
+00000000-0000-0000-0000-000000000007	/srv/media/movies/The Quiet Harbour (1978)/keeper.mkv	/srv/staging/keeper.mkv	16
 ```
+
+The fourth column is optional: the number of streams the record should show
+once the server has read the new file. With it, the refresh after the swap is
+polled until the record says sixteen; without it, only until the stream table
+changes at all.
 
 The dry run first, which is what that command is:
 

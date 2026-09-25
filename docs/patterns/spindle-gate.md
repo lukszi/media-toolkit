@@ -83,9 +83,12 @@ itself forever -- which looks exactly like a gate that is working.
 is a real answer: only one platform exposes this without a privileged call.
 
 A gate that assumes "not spinning" because it could not find out is a gate
-that lets two readers onto the one disk that could not take them. So unknown
-behaves like spinning, and `--max-readers` is how somebody who knows their
-storage says otherwise.
+that lets two readers onto the one disk that could not take them. So the gate does
+not decide on that answer at all: every device -- spinning, solid-state or
+unknown -- is held at one heavy reader, and the answer is only reported
+(`jfkit jobs gate` adds a line when it knows the device spins). Somebody who
+knows their storage can take more readers from Python, with
+`jfkit.jobs.gate(device, max_readers=N)`; the command line has no flag for it.
 
 ## 7. Pack the lanes largest-first
 

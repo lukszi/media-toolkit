@@ -3,8 +3,15 @@
 ## Reporting
 
 Please report a suspected vulnerability privately through the repository's
-security advisory form rather than in a public issue. A first response is sent
-within a few days.
+security advisory form -- *Report a vulnerability* on the Security tab of
+<https://github.com/lukszi/media-toolkit/security>
+-- rather than in a public issue. A first response is sent within a few days.
+
+If that form is not available (private vulnerability reporting is a setting
+the repository has to switch on), open an
+[issue](https://github.com/lukszi/media-toolkit/issues) that says only that you
+have something to report privately and asks for a contact. Put no details of
+the problem in it: not the component, not the input, not the effect.
 
 ## How secrets are handled
 

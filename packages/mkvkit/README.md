@@ -4,10 +4,22 @@ Matroska surgery and verification, and the shared foundation the rest of
 `media-toolkit` is built on: the configuration model, external-program
 discovery and the logging setup.
 
+`mkvkit` is not on PyPI, and `pip install mkvkit` from PyPI is not available.
+Install it from [the repository](https://github.com/lukszi/media-toolkit):
+
 ```
-pip install mkvkit
-pip install "mkvkit[langid]"    # spoken-language identification
-pip install "mkvkit[align]"     # the numeric half, without a speech model
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
+pip install -e packages/mkvkit
+pip install -e "packages/mkvkit[langid]"    # spoken-language identification
+pip install -e "packages/mkvkit[align]"     # the numeric half, without a speech model
+```
+
+or without a checkout:
+
+```
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit"
+pip install "mkvkit[langid] @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit"
 ```
 
 The core is standard library only. ffmpeg, ffprobe and the MKVToolNix
@@ -31,7 +43,7 @@ Everything that writes defaults to a dry run and needs `--apply`. A rebuild is
 staged, verified against its own plan by `remux --apply` itself, and swapped
 in; the file it replaces is parked, never deleted. An applied header edit
 writes its rollback to disk before it touches the file. `docs/mkvkit.md` in
-the repository is the guide.
+[the repository](https://github.com/lukszi/media-toolkit) is the guide.
 
 One thing worth knowing before you use the chapter verbs: a published chapter
 list whose timestamps match your cut proves the **marks** fit and says nothing
@@ -40,5 +52,5 @@ is what to do about that. The bundled archive adapter is a scraper, ships
 disabled, and is yours to enable deliberately or not at all. There is no
 namer: this package checks names, it does not write them.
 
-See the repository root for the safety stance, the configuration model and the
-contribution policy.
+See the root of [the repository](https://github.com/lukszi/media-toolkit) for
+the safety stance, the configuration model and the contribution policy.

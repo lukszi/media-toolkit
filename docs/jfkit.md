@@ -4,14 +4,26 @@ Tools for asking a media server what it thinks it has, changing one field of
 it without emptying the rest, and replacing a file underneath it without
 losing what the catalogue knows.
 
-Install:
+Install, from a checkout of the repository (`jfkit` is not on PyPI, and
+`pip install jfkit` from PyPI is not available):
 
 ```
-pip install jfkit
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
+pip install -e packages/mkvkit -e packages/jfkit
 ```
 
-It brings `mkvkit` with it: the two packages share one configuration model,
-one program-discovery path and one logging setup.
+or without a checkout, both in one command:
+
+```
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit" \
+            "jfkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/jfkit"
+```
+
+`jfkit` needs `mkvkit`: the two packages share one configuration model, one
+program-discovery path and one logging setup. Name `mkvkit` in the same
+`pip install` command, as above, so that pip takes it from the repository and
+never goes looking for it on PyPI.
 
 Validated against Jellyfin 12.1. Not affiliated with the Jellyfin project.
 
@@ -84,7 +96,6 @@ One file, found at `--config PATH`, then `$MEDIATOOLKIT_CONFIG`, then
 url       = "http://127.0.0.1:8096"
 token_env = "JFKIT_TOKEN"      # the token is never a value in this file
 user_id   = "00000000-0000-0000-0000-000000000001"
-data_dir  = "/var/lib/media-server"
 
 [paths]
 parked  = "/srv/parked"

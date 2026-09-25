@@ -19,17 +19,25 @@ the rename decides whether it survives the next refresh.
 ## 1. Ask what the filenames will be read as, before touching them
 
 ```
-jfkit naming /srv/media/series/Harbour Lights --only-problems
+jfkit naming "/srv/media/series/Harbour Lights" --only-problems
 ```
 
 ```
-RANGE S01E01-E05  rule=absolute       Harbour Lights 1-05 Pilot.avi
-RANGE S01E06-E07  rule=absolute       Harbour Lights 6-07 Low Water.avi
-      S01E08      rule=season-episode Harbour.Lights.S01E08.mkv
+RANGE S=- E=1 end=5 [absolute]  Harbour Lights 1-05 Pilot.avi
+        note: read as an absolute episode number; adding an SxxEyy token to the name suppresses this expression
+        note: this name produces an episode range; the end number is refilled from the path on any refresh that runs a provider, so only a rename clears it
+        note: the parent folder names season 1; the expressions never read it, but the server does
+RANGE S=- E=6 end=7 [absolute]  Harbour Lights 6-07 Low Water.avi
+        note: read as an absolute episode number; adding an SxxEyy token to the name suppresses this expression
+        note: this name produces an episode range; the end number is refilled from the path on any refresh that runs a provider, so only a rename clears it
+        note: the parent folder names season 1; the expressions never read it, but the server does
 
-11 path(s), 3 shown, 2 would be read as a range, 0 claimed by no expression.
+11 path(s), 2 shown, 2 would be read as a range, 0 claimed by no expression.
 Checked against Jellyfin 12.1, September 2026; see docs/gotchas/jellyfin-12.md.
 ```
+
+The path is quoted because it has a space in it: unquoted, the shell hands
+the command two paths, neither of which exists.
 
 Two names produce ranges. That is the whole diagnosis, and it took one
 command that read nothing but filenames. It exits non-zero, so it can sit in
@@ -62,18 +70,27 @@ plot and the end-episode number -- and keep only the date it was added.
 
 ```
 mv "/srv/media/series/Harbour Lights/Season 01/Harbour Lights 1-05 Pilot.avi" \
-   "/srv/media/series/Harbour Lights/Season 01/Harbour.Lights.S01E01.mkv"
+   "/srv/media/series/Harbour Lights/Season 01/Harbour Lights S01E01 Pilot.avi"
 ```
+
+The extension stays `.avi`. A rename changes what the file is called, not what
+is inside it; calling an AVI file `.mkv` does not make it Matroska, and every
+tool that trusts the extension is then wrong about it.
 
 Then confirm the prediction agrees with what you meant:
 
 ```
-jfkit naming "/srv/media/series/Harbour Lights/Season 01"
+jfkit naming "/srv/media/series/Harbour Lights/Season 01/Harbour Lights S01E01 Pilot.avi"
 ```
 
 ```
-      S01E01      rule=season-episode Harbour.Lights.S01E01.mkv
+      S=1 E=1 end=- [season-episode]  Harbour Lights S01E01 Pilot.avi
+
+1 path(s), 1 shown, 0 would be read as a range, 0 claimed by no expression.
+Checked against Jellyfin 12.1, September 2026; see docs/gotchas/jellyfin-12.md.
 ```
+
+`Harbour Lights 6-07 Low Water.avi` gets the same treatment, as episode 6.
 
 ## 4. Tell the server about the folder -- and only the folder
 
@@ -113,7 +130,7 @@ Now the ordering rule, which is the whole point of `jfkit item set`:
 ```
 jfkit item set 00000000-0000-0000-0000-000000000011 \
     --field IndexNumber=1 --field ParentIndexNumber=1 \
-    --field 'Name=Low Water' \
+    --field Name=Pilot \
     --field PremiereDate=1998-04-03 \
     --backup work/before/episode-11.json --apply
 ```
@@ -153,11 +170,11 @@ jfkit item diff 00000000-0000-0000-0000-000000000011 work/before/episode-11.json
 
 ```
 00000000-0000-0000-0000-000000000011: no drift
-  expected: Name: 'Harbour Lights 1-05 Pilot' -> 'Low Water'
+  expected: Name: 'Harbour Lights 1-05 Pilot' -> 'Pilot'
   expected: IndexNumber: None -> 1
   expected: ParentIndexNumber: None -> 1
   expected: PremiereDate: None -> '1998-04-03T00:00:00.0000000Z'
-  expected: Overview: None -> 'An invented description of Low Water.'
+  expected: Overview: None -> 'An invented description of Pilot.'
 ```
 
 Every change is one that was declared. `no drift` means nothing else moved --
@@ -167,7 +184,8 @@ identifier.
 ## 7. When it is right, lock it
 
 ```
-jfkit item set 00000000-0000-0000-0000-000000000011 --field LockData=true --apply
+jfkit item set 00000000-0000-0000-0000-000000000011 --field LockData=true \
+    --backup work/before/episode-11-lock.json --apply
 ```
 
 The lock is what makes the numbers survive a replacing refresh or a
@@ -177,7 +195,8 @@ re-identification later.
 and nothing undoes that in one call. `jfkit item set` refuses:
 
 ```
-$ jfkit item set 00000000-0000-0000-0000-000000000010 --field LockData=true --apply
+$ jfkit item set 00000000-0000-0000-0000-000000000010 --field LockData=true \
+    --backup work/before/season-01.json --apply
 refusing to write ['LockData'] on a Season: the lock reaches every item
 underneath it, and nothing undoes that in one call
 ```

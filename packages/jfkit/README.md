@@ -7,14 +7,28 @@ defaults filled in, database and preview upkeep, six read-only surveys,
 in-place file swapping, evidence-first deletion, segment scoping, and a device
 gate for the jobs that read everything.
 
+`jfkit` is not on PyPI, and `pip install jfkit` from PyPI is not available.
+Install it from [the repository](https://github.com/lukszi/media-toolkit),
+together with `mkvkit`, in one command:
+
 ```
-pip install jfkit
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
+pip install -e packages/mkvkit -e packages/jfkit
+```
+
+or without a checkout:
+
+```
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit" \
+            "jfkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/jfkit"
 ```
 
 Validated against Jellyfin 12.1. Not affiliated with the Jellyfin project.
 
-`mkvkit` comes with it: the two packages share one configuration model, one
-program-discovery path and one logging setup.
+`jfkit` needs `mkvkit`: the two packages share one configuration model, one
+program-discovery path and one logging setup. Naming `mkvkit` in the same
+`pip install` command is what keeps pip from looking for it on PyPI.
 
 ## Two things that are not optional
 

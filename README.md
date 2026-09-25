@@ -3,11 +3,11 @@
 Three small tools for keeping a self-hosted video library correct, in one
 repository.
 
-| Package | Install | What it does |
+| Package | Directory | What it does |
 |---|---|---|
-| `mkvkit` | `pip install mkvkit` | the file side: safe header edits, original-vs-rebuilt verification, chapters, Matroska tags, container probing, spoken-language identification |
-| `jfkit` | `pip install jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, segment scoping, detached jobs |
-| `dubalign` | `pip install dubalign` | aligning a foreign-language dub to a different transfer of the same title: decode, measure, find the seams, splice, verify |
+| `mkvkit` | `packages/mkvkit` | the file side: safe header edits, original-vs-rebuilt verification, chapters, Matroska tags, container probing, spoken-language identification |
+| `jfkit` | `packages/jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, segment scoping, detached jobs |
+| `dubalign` | `packages/dubalign` | aligning a foreign-language dub to a different transfer of the same title: decode, measure, find the seams, splice, verify |
 
 `mkvkit` and `dubalign` are useful with no media server at all. `jfkit` talks
 to Jellyfin 12.x over HTTP; everything here was validated against 12.1.
@@ -17,22 +17,47 @@ project.
 
 ## Install
 
+The packages are not on PyPI: `pip install mkvkit` (or `jfkit`, or
+`dubalign`) from PyPI is not available, and any package of that name there is
+not this project. Install from the repository,
+<https://github.com/lukszi/media-toolkit>.
+
+From a checkout, all three at once:
+
 ```
-pip install mkvkit
-pip install "mkvkit[langid]"      # spoken-language identification
-pip install "dubalign[align]"     # changepoint detection and resampling
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
+pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
+```
+
+`jfkit` and `dubalign` depend on `mkvkit`. Name every package you need in
+**one** `pip install` command, `mkvkit` included, so that pip takes `mkvkit`
+from the checkout rather than looking for it on PyPI:
+
+```
+pip install -e packages/mkvkit                                # the file side alone
+pip install -e packages/mkvkit -e packages/jfkit              # plus the server side
+pip install -e "packages/mkvkit[langid]"                      # spoken-language identification
+pip install -e packages/mkvkit -e "packages/dubalign[align]"  # changepoint detection and resampling
+```
+
+Or straight from GitHub without a checkout, again `mkvkit` in the same
+command as anything that needs it (the trailing backslash continues one
+command onto the next line in a POSIX shell):
+
+```
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit"
+pip install "mkvkit[langid] @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit"
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit" \
+            "jfkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/jfkit"
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit" \
+            "dubalign[align] @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/dubalign"
 ```
 
 Python 3.11 or newer. The external programs (ffmpeg, ffprobe, and the
 MKVToolNix command-line tools) are discovered at run time and never vendored;
 speech-model weights are never vendored either -- the model name and its cache
 directory are configuration (`[langid].model`, `[langid].model_dir`).
-
-From a checkout:
-
-```
-pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
-```
 
 ## Configuration
 
@@ -61,7 +86,6 @@ mkvmerge = "mkvmerge"
 movies  = "/srv/media/movies"
 staging = "/srv/staging"            # where rebuilds are assembled
 parked  = "/srv/parked"             # where replaced originals go, and stay
-work    = "./work"                  # logs, caches, evidence
 
 [policy]
 keep_languages = ["eng", "deu"]     # never dropped
@@ -80,9 +104,10 @@ singleton, nothing that hands a caller a token by being imported.
 
 Validation reports *every* problem in one message, not the first one it hits.
 
-## What is released
+## Versions
 
-`mkvkit` 0.3.0, `jfkit` 0.3.0 and `dubalign` 0.1.0.
+`mkvkit` 0.3.0, `jfkit` 0.3.0 and `dubalign` 0.1.0 -- versions of this tree;
+none of them is published on PyPI.
 
 **Edit a Matroska file, and prove you changed only what you meant to.**
 `mkvkit probe` says what is in a file, from both programs that can describe
@@ -187,9 +212,9 @@ document here with no implementing function, and it says so in its first
 paragraph.
 
 **Nothing in the tree is a skeleton any more.** Every module that was one at
-the first release of either package is implemented, tested and documented at
+the first version of either package is implemented, tested and documented at
 `jfkit` 0.3.0 and `mkvkit` 0.3.0. Each package's `CHANGELOG.md` says what
-arrived when, and what each release deliberately does not do -- the largest of
+arrived when, and what each version deliberately does not do -- the largest of
 which is that there is no chapter *namer* here, only the machinery that
 checks names and refuses the ones that do not hold up.
 

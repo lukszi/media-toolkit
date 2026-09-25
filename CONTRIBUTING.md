@@ -36,21 +36,31 @@ file names, not in commit messages. It is enforced rather than remembered.
 
 ## Reviewer checklist
 
-The mechanical half runs in CI on every pull request and blocks the merge; the
-rest is a person reading the diff. Both halves apply to every changed file.
+The mechanical half runs in CI on every push and every pull request, and any
+finding fails the run (mark the `ci` checks as required in the branch
+protection rules and a failed run also blocks the merge); the rest is a person
+reading the diff. Both halves apply to every changed file.
 
 **Mechanical -- `.github/workflows/ci.yml`, blocking:**
 
-- [ ] the deny scan is clean over the working tree, the diff and the commit
-      message
-- [ ] secret scanning is clean over the full history
+- [ ] the deny scan is clean over the working tree, and over every commit of
+      the change, one at a time -- its added lines (a root commit: its whole
+      tree) and its message. The change is a pull request's commits since its
+      base, or a push's commits since the one the branch pointed at before.
+      A push with no earlier commit to compare against (the first push of a
+      branch or tag, or a force push whose old tip is gone), the weekly
+      scheduled run and a manual run scan every commit reachable from `HEAD`
+      instead
+- [ ] secret scanning (gitleaks) is clean over the commits a push or pull
+      request brings, and over the full history on the weekly scheduled run
+      and on a manual run (*Run workflow* on the Actions tab)
 - [ ] no absolute path with a drive letter outside `examples/` and
       `docs/gotchas/windows-shell.md`
 - [ ] no 32-hex identifier, and no globally unique identifier outside the
       all-zero fixture ones
 - [ ] no host name or bare address other than the loopback address,
       `localhost` or `example.com`
-- [ ] no e-mail address
+- [ ] no e-mail address other than an `example.com` one
 - [ ] no release-shaped filename token (a resolution next to a source tag, or
       a trailing group suffix) outside the invented cast
 - [ ] `examples/mediatoolkit.example.toml` contains no value that looks like a
@@ -83,10 +93,16 @@ merged.
 ## Tests
 
 ```
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
 pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
-pip install pytest ruff
+pip install pytest ruff==0.15.0 mypy==1.19.1
 pytest -m "not needs_ffmpeg and not needs_mkvtoolnix and not needs_asr"
 ```
+
+The three packages go in with one `pip install` command: `jfkit` and
+`dubalign` depend on `mkvkit`, and naming it in the same command is what makes
+pip take it from the checkout. None of them is on PyPI.
 
 That selection must pass on a machine with none of those programs installed.
 With them installed, `pytest` runs everything except `needs_asr`, which wants
@@ -106,11 +122,28 @@ a track whose tag contradicts its header, a container that is not what its
 extension claims, a pair shifted by an amount the measurement must recover, a
 chapter grid at times the code must reproduce.
 
-Markers: `needs_ffmpeg`, `needs_mkvtoolnix`, `needs_asr`, `slow`. A test that
-needs an external program declares it; tests skip themselves when the program
-is absent, so a partial toolchain reports skips rather than errors.
+Markers: `needs_ffmpeg`, `needs_mkvtoolnix`, `needs_asr`, `slow`,
+`repository`. A test that needs an external program declares it; tests skip
+themselves when the program is absent, so a partial toolchain reports skips
+rather than errors. A test about the checkout itself -- the licences, the
+changelogs, the example configuration, the deny scan over the tree -- is
+marked `repository("path", ...)` with the files it reads, and skips, naming
+them, when the suite is run somewhere those files are not (against an
+installed distribution, say). In a checkout it always runs.
 
-Style is `ruff check .` with the configuration in the root `pyproject.toml`.
+Style is `ruff check .` and types are `mypy` (strict), both with the
+configuration in the root `pyproject.toml` and at the versions CI pins:
+ruff 0.15.0, mypy 1.19.1.
+
+## Adding a file at the root
+
+`.gitignore` is an allowlist: its first rule, `/*`, ignores everything at the
+top level, and only the directories and files named after it with `!` are
+tracked. A new file at the root -- a `.gitleaks.toml`, a `CODE_OF_CONDUCT.md`
+-- is therefore ignored silently: `git status` does not show it and
+`git add` refuses it. Add a `!/NAME` line for it to `.gitignore` in the same
+commit, and check with `git status` that it now appears. Files inside the
+allowed directories are not affected.
 
 ## Splitting a package out later
 

@@ -12,10 +12,26 @@ measures all of that, works out where the joins go, builds the track on the
 keeper's timeline, and then measures the result against the keeper from end to
 end.
 
+`dubalign` is not on PyPI, and `pip install dubalign` from PyPI is not
+available. Install it from [the repository](https://github.com/lukszi/media-toolkit),
+together with `mkvkit`, which it depends on, in one command:
+
 ```
-pip install dubalign
-pip install "dubalign[align]"    # a faster resampler and a more robust filter
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
+pip install -e packages/mkvkit -e packages/dubalign
+pip install -e packages/mkvkit -e "packages/dubalign[align]"    # a faster resampler and a more robust filter
 ```
+
+or without a checkout:
+
+```
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit" \
+            "dubalign[align] @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/dubalign"
+```
+
+Naming `mkvkit` in the same `pip install` command is what keeps pip from
+looking for it on PyPI.
 
 Arrays are not an optional extra here — they are what the library is. The extra
 buys a polyphase resampler and an outlier-robust filter; everything has a path
@@ -94,12 +110,15 @@ see it. `dubalign encode` trims that off by name.
 
 ## Try it on something you can generate
 
-The repository's fixture builder writes `drift_pair.mka`: one container, two
+The fixture builder in [the repository](https://github.com/lukszi/media-toolkit)
+writes `drift_pair.mka`: one container, two
 tracks, the same invented programme in two transfers, with a gap at the head, a
 stretch missing from the middle and a rate difference after it. The answers are
 written down, the whole pipeline runs on it end to end, and the test that
 proves the build is inside the bar is paired with one proving the *unbuilt*
 transfer is not.
+
+From the root of a checkout:
 
 ```
 python -m tests.fixtures build
@@ -114,5 +133,6 @@ document lists each of those with what would be involved, rather than leaving
 them to be discovered.
 
 See `docs/methods/pal-alignment.md` for the method, what every number means,
-and the mistakes each rule exists to prevent. See the repository root for the
-safety stance, the configuration model and the contribution policy.
+and the mistakes each rule exists to prevent. See the root of
+[the repository](https://github.com/lukszi/media-toolkit) for the safety
+stance, the configuration model and the contribution policy.

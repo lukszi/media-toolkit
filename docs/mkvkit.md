@@ -5,10 +5,20 @@ that only that thing changed. Nothing here needs a media server; everything
 here reads before it writes, and every command that writes needs to be told
 twice.
 
-Install:
+Install, from a checkout of the repository (`mkvkit` is not on PyPI, and
+`pip install mkvkit` from PyPI is not available):
 
 ```
-pip install mkvkit
+git clone https://github.com/lukszi/media-toolkit
+cd media-toolkit
+pip install -e packages/mkvkit
+pip install -e "packages/mkvkit[langid]"    # with spoken-language identification
+```
+
+or without a checkout:
+
+```
+pip install "mkvkit @ git+https://github.com/lukszi/media-toolkit#subdirectory=packages/mkvkit"
 ```
 
 You will also need [MKVToolNix](https://mkvtoolnix.download/) and
@@ -42,14 +52,17 @@ A worked sequence, dropping a dubbed track from a film whose original
 language is English:
 
 ```
-mkvkit probe /srv/media/movies/The Quiet Harbour (1978)/the-quiet-harbour.mkv
+mkvkit probe "/srv/media/movies/The Quiet Harbour (1978)/the-quiet-harbour.mkv"
 mkvkit remux "/srv/media/movies/The Quiet Harbour (1978)/the-quiet-harbour.mkv" \
     --staging /srv/staging --original-language eng --apply
-mkvkit verify "/srv/media/movies/.../the-quiet-harbour.mkv" \
+mkvkit verify "/srv/media/movies/The Quiet Harbour (1978)/the-quiet-harbour.mkv" \
     /srv/staging/the-quiet-harbour.mkv --dropped 3
-mkvkit swap "/srv/media/movies/.../the-quiet-harbour.mkv" \
+mkvkit swap "/srv/media/movies/The Quiet Harbour (1978)/the-quiet-harbour.mkv" \
     /srv/staging/the-quiet-harbour.mkv --parked /srv/parked --apply
 ```
+
+A path with spaces or parentheses in it is quoted, every time: unquoted, the
+shell splits it into several arguments, and the parentheses are shell syntax.
 
 `remux --apply` verifies what it just built before it exits: both files are
 read in full, one hash per stream, and compared against the rebuild's own plan
