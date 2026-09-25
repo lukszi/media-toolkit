@@ -3,7 +3,7 @@
 A gate that has never failed is not known to work, so the first test here
 plants findings and requires every one of them to be caught. The second
 requires the repository itself to be clean, which is the assertion CI makes on
-every pull request.
+every push and every pull request.
 
 The rest are about the table itself. It is written from one source rather than
 typed twice, and these check the properties that make that worth doing: the
@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.deny_scan import RULES, canary, cast_exemptions, scan_text, scan_tree
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -27,11 +29,13 @@ def test_the_gate_catches_every_planted_finding() -> None:
     assert canary() == 0
 
 
+@pytest.mark.repository("pyproject.toml", "packages", "docs/CONVENTIONS.md")
 def test_the_repository_is_clean() -> None:
     findings = scan_tree(REPO_ROOT)
     assert findings == [], [str(f) for f in findings]
 
 
+@pytest.mark.repository("docs/CONVENTIONS.md")
 def test_the_cast_comes_from_the_conventions_file() -> None:
     names = cast_exemptions()
     assert names, "the invented cast must be readable from its own document"
@@ -46,6 +50,7 @@ def test_a_finding_never_prints_what_it_matched() -> None:
     assert planted not in str(found[0])
 
 
+@pytest.mark.repository("docs/CONVENTIONS.md")
 def test_the_invented_cast_is_not_flagged() -> None:
     names = cast_exemptions()
     example = next((n for n in names if n.endswith(".mkv")), None)

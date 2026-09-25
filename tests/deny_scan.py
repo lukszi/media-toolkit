@@ -5,8 +5,9 @@
     python tests/deny_scan.py --canary
 
 The policy in CONTRIBUTING.md is enforced here rather than remembered. CI runs
-it over the working tree, the pull request's diff and the commit messages, and
-the same scan produced this repository's history in the first place.
+it over the working tree and over every commit a push or a pull request brings,
+one at a time, with its message -- and over the whole history once a week --
+and the same scan produced this repository's history in the first place.
 
 It looks for **shapes**, not for a list somebody remembered: an absolute path,
 a drive letter, a profile directory, a host address, an e-mail address, an

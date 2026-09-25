@@ -42,6 +42,7 @@ def test_defaults_point_nowhere_real() -> None:
     assert config.jobs.max_readers_per_device == 1
 
 
+@pytest.mark.repository("examples/mediatoolkit.example.toml")
 def test_the_example_file_still_validates() -> None:
     """The shipped example is loaded by the suite, so it cannot rot."""
     config = loads(EXAMPLE_CONFIG.read_text(encoding="utf-8"), source=EXAMPLE_CONFIG)

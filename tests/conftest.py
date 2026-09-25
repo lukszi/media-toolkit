@@ -17,12 +17,31 @@ import pytest
 from tests.fixtures import build, ffmpeg_missing
 from tests.fixtures.make_fixtures import locate
 
+#: The checkout this file sits in. Outside one -- the test suite run against an
+#: installed distribution -- the files a ``repository`` test names are absent.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 #: marker -> the programs it needs, found the way the toolkit finds them
 #: (configuration, environment, PATH, then the platform install directories)
 MARKER_TOOLS = {
     "needs_ffmpeg": ("ffmpeg", "ffprobe"),
     "needs_mkvtoolnix": ("mkvmerge", "mkvpropedit"),
 }
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # Also declared in the root pyproject.toml; repeated here because a run
+    # outside a checkout does not have that file, and would warn about every
+    # one of them.
+    for marker in (
+        "repository(*paths): checks the checkout itself; "
+        "skipped when the named files are absent",
+        "needs_ffmpeg: requires ffmpeg and ffprobe",
+        "needs_mkvtoolnix: requires the MKVToolNix command-line tools",
+        "needs_asr: requires a speech model and is slow",
+        "slow: takes more than a few seconds",
+    ):
+        config.addinivalue_line("markers", marker)
 
 
 def pytest_collection_modifyitems(
@@ -37,6 +56,15 @@ def pytest_collection_modifyitems(
                 item.add_marker(
                     pytest.mark.skip(reason=f"not installed: {', '.join(absent)}")
                 )
+        # A test about the repository -- its licences, its changelogs, its
+        # example file, its tree -- names the files it reads. Where they are
+        # missing this is not a checkout, and the test has nothing to check.
+        for mark in item.iter_markers("repository"):
+            missing = [p for p in mark.args if not (REPO_ROOT / p).exists()]
+            if missing:
+                item.add_marker(pytest.mark.skip(
+                    reason=f"not run from a checkout: {', '.join(missing)} absent"
+                ))
 
 
 @pytest.fixture(scope="session")

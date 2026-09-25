@@ -51,6 +51,7 @@ def test_every_package_reports_the_version_it_should() -> None:
         assert module.__version__ == expected, f"{package} {module.__version__}"
 
 
+@pytest.mark.repository(*(f"packages/{p}/CHANGELOG.md" for p in PACKAGES))
 def test_every_package_has_a_changelog_naming_its_version() -> None:
     """A version bump with no entry is a release nobody can read."""
     for package, expected in VERSIONS.items():
@@ -65,6 +66,7 @@ def test_the_entry_points_exist() -> None:
         assert callable(main)
 
 
+@pytest.mark.repository(*(f"packages/{p}/LICENSE" for p in PACKAGES))
 def test_every_package_ships_its_own_licence() -> None:
     """A distribution built from one package has to be complete on its own."""
     for package in PACKAGES:
@@ -76,6 +78,7 @@ def test_every_package_ships_its_own_licence() -> None:
         assert spdx in init.read_text(encoding="utf-8")
 
 
+@pytest.mark.repository(*(f"packages/{p}/src/{p}" for p in PACKAGES))
 def test_no_module_is_still_a_skeleton() -> None:
     """The stub marker is gone from every package, and stays gone."""
     for package in PACKAGES:

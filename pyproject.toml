@@ -23,6 +23,7 @@ markers = [
   "needs_mkvtoolnix: requires the MKVToolNix command-line tools",
   "needs_asr: requires a speech model and is slow",
   "slow: takes more than a few seconds",
+  "repository(*paths): checks the checkout itself; skipped when the named files are absent",
 ]
 filterwarnings = ["error"]
 
