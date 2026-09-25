@@ -3,12 +3,17 @@ name: ci
 on:
   push:
   pull_request:
+  # The whole history, not only what one push or pull request brought: once a
+  # week, and by hand from the Actions tab.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,13 +32,50 @@ jobs:
         run: python tests/deny_scan.py --canary
       - name: scan the tree
         run: python tests/deny_scan.py --tree .
-      - name: scan this change and its messages
-        if: github.event_name == 'pull_request'
+      # A pull request is scanned from its base, a push from the commit the
+      # branch pointed at before it. A push with no usable "before" -- the
+      # first push of a branch or tag, or a force push whose old tip is not
+      # in the clone -- and the weekly and manual runs scan every commit on
+      # HEAD instead. Either way every commit is scanned on its own (its
+      # added lines, or a root commit's whole tree), so a line added and
+      # removed again inside one push is still seen, and so is every message.
+      # A range the scanner cannot resolve is reported as "nothing to
+      # compare" and passes, so it is checked here before it is handed over.
+      - name: scan the change and its messages
+        if: github.event_name != 'push' || !github.event.deleted
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
         run: |
-          python tests/deny_scan.py \
-            --diff "${{ github.event.pull_request.base.sha }}..${{ github.sha }}" \
-            --messages "${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
+          set -euo pipefail
+          revisions="HEAD"
+          if [ "$EVENT" = "pull_request" ]; then
+            revisions="$PR_BASE..$AFTER"
+          elif [ "$EVENT" = "push" ] \
+              && [ -n "$BEFORE" ] \
+              && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+              && git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
+            revisions="$BEFORE..$AFTER"
+          fi
+          rc=0
+          python tests/deny_scan.py --messages "$revisions" || rc=1
+          for c in $(git rev-list "$revisions"); do
+            if git rev-parse --verify --quiet "$c^" > /dev/null; then
+              python tests/deny_scan.py --diff "$c^..$c" || rc=1
+            else
+              root="$RUNNER_TEMP/root-$c"
+              mkdir -p "$root"
+              git archive "$c" | tar -x -C "$root"
+              python tests/deny_scan.py --tree "$root" || rc=1
+            fi
+          done
+          exit "$rc"
 
+  # On a pull request and a push the action scans the commits that event
+  # brought; on the schedule and on a manual run it scans the full history.
   gitleaks:
     needs: [gate]
     runs-on: ubuntu-latest
@@ -43,6 +85,8 @@ jobs:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   lint:
@@ -53,7 +97,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff mypy
+      # Pinned: a new release of either one is a change to the gate, and it
+      # arrives as a commit rather than as a red build nobody caused.
+      - run: pip install ruff==0.15.0 mypy==1.19.1
       - run: ruff check .
       - name: install the packages so the type checker sees them
         run: pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
