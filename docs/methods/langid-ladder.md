@@ -79,8 +79,11 @@ confidence attached.
 
 ## 3. The bar
 
-`SettleBar` holds every threshold in one frozen object so that all of them are
-configuration and none of them is a number buried in an `if`. The defaults:
+`SettleBar` holds every threshold in one frozen object so that none of them is
+a number buried in an `if`. A caller of the library can set any of them; the
+configuration file reaches two, `[langid].min_conf` and
+`[langid].override_conf`, and the command line uses the defaults for the rest.
+The defaults:
 
 | | Standard | Overturning an existing tag |
 |---|---|---|
@@ -214,13 +217,16 @@ library are right, and the tracks that disagree are where the information is.
 1. **Scan.** `mkvkit langid scan` over the whole collection, writing evidence
    to a log. This is the only expensive step, and it is resumable.
 2. **Treat your existing tags as approximate ground truth.** `mkvkit langid
-   report` prints agreement overall and by confidence band. If agreement at
-   the top band is not close to total, the detector or the extraction is the
-   problem and no threshold will fix it.
+   report` prints the overall agreement with the tags that were already there;
+   it does not break it down by confidence. Split the per-track rows it writes
+   (`--out-dir`) by their `confidence` column yourself. If agreement among the
+   most confident tracks is not close to total, the detector or the extraction
+   is the problem and no threshold will fix it.
 3. **Put the standard bar where the curve flattens.** Sweep `min_conf` over
    the stored evidence -- no re-scan, this is arithmetic -- and read off where
    further confidence stops buying accuracy. That is `min_conf`, and
-   `min_agree_frac` follows the same way.
+   `min_agree_frac` follows the same way (settable from the library only; see
+   below).
 4. **Set the overturn bar from your own disagreements.** Take every track
    where the audio contradicts the tag at the standard bar, and check them by
    hand. However rare a genuine mislabel turns out to be, the overturn bar has
@@ -237,9 +243,11 @@ library are right, and the tracks that disagree are where the information is.
 7. **Write the numbers down with the sample they came from**, next to the
    configuration. A threshold without its fit is folklore within a month.
 
-Every threshold in `SettleBar` is configuration, so a re-fit is a
-configuration change and a re-run of `mkvkit langid report` -- not a code
-change and not another pass over the media.
+A re-fit of `min_conf` and `override_conf` is a configuration change and a
+re-run of `mkvkit langid report` -- not a code change and not another pass
+over the media. Every other threshold in `SettleBar` can be changed only by
+constructing one in code and calling `review.decide_all(..., bar=...)` over
+the stored evidence; there is no configuration key or flag for them.
 
 ---
 
@@ -248,9 +256,9 @@ change and not another pass over the media.
 - **No detector ships with this package.** `worker.Detector` is a protocol;
   the adapters are optional extras, and a second *family* for stage 4 is a
   separate extra again. Stage 4 is unavailable if you install neither.
-- **Stage 5 is a person.** The package produces the clip and the queue. It
-  does not produce the answer, and there is no interface for recording one
-  beyond writing the tag.
+- **Stage 5 is a person.** The package produces the queue: which tracks, and
+  why. It does not cut a clip to listen to, it does not produce the answer,
+  and there is no interface for recording one beyond writing the tag.
 - **Nothing here re-fits the bar for you.** Section 6 is a procedure, not a
   command. `sweep`-style tooling over a stored evidence log would be a natural
   addition and does not exist.

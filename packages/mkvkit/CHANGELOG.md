@@ -3,6 +3,61 @@
 This file records what changed and why it is safe to install. Dates are the
 day the work was done.
 
+## Unreleased
+
+Every finding of the pre-release review that concerns this package's own
+code. Most are about a write that could leave a file worse than it found it
+and not say so.
+
+### Changed
+
+- **`remux --apply` verifies what it built.** Both files are hashed stream by
+  stream and compared against the rebuild's own plan before the command
+  exits; a rebuild that does not verify exits 1 and is left in staging. The
+  printed `mkvkit verify` line now carries `--default-moved` and `--chapters`
+  where the plan needs them.
+- **Moving the default audio track clears it everywhere else.** The muxer is
+  told `:0` for every other kept audio track, so a rebuilt file never carries
+  two defaults; `verify --default-moved` now requires exactly one.
+  `verify --chapters DOCUMENT` holds a rebuild's marks to the document that was
+  written in.
+- **Applied header edits write their rollback to disk first.** `propedit`,
+  `chapters apply` and `chapters plan` take `--rollback-dir` (default
+  `<[paths].work>/rollback`) and write a TSV of previous values plus the chapter
+  and tag documents the file had -- exactly as the extractor printed them --
+  before the editor runs. An edit whose rollback cannot be written does not
+  happen. `Rollback.restore_command()` gives the editor arguments that undo it.
+- **Tags round-trip whole.** Nested simple tags, binary values and their
+  format, `TagLanguageIETF` and the default-language flag are read and written
+  back; the triple comparison names nested tags by path and sees an emptied
+  binary value. A tag document with any other element is refused before
+  anything is written.
+- **Chapter structure the model cannot carry is refused, not dropped.** Marks
+  nested under a mark, and a mark named in more than one language, are
+  recorded on read; `build()` and `rollback()` raise, and `chapters apply`,
+  `chapters rollback` and `remux --chapters` refuse.
+- **`--out` is never overwritten silently.** `chapters rollback` and
+  `chapters match` refuse an existing `--out` file unless `--force` is given.
+- **`remux` refuses, rather than deletes, a file already in staging** under
+  the output name, its `.part` name or its chapter-document name, and removes
+  its own part file and chapter document whatever happens.
+- **A credential in `[server].url` is refused** (`user:pass@host`), without
+  repeating it in the error.
+- **`[langid].model_dir`** sets the speech model's cache directory; it was
+  documented as configuration and was not.
+- The `align` extra is gone: it installed numpy and scipy, which nothing in
+  this package uses.
+
+### Fixed
+
+- `swap`: a check that raised after the copy (a failing probe, Ctrl-C) left
+  the unverified file live. The original is now put back before the error
+  travels on.
+- `remux` and `propedit`: a warning exit with no message text raised
+  `IndexError` instead of recording the warning.
+- The chapter-database adapter's disabled message named a command-line flag
+  that does not exist; it now names the constructor argument.
+
 ## 0.3.0 -- 2026-09-23
 
 Chapter names: where a published list comes from, whether its names describe

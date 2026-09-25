@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from mkvkit import cli as mkvkit_cli
-from mkvkit.chapters.xml import Chapter, ChapterSet, build
+from mkvkit.chapters.xml import Chapter, ChapterSet, build, parse
 
 VERBS = ("probe", "chapters", "tags", "propedit", "verify", "remux", "swap")
 
@@ -224,6 +224,60 @@ def test_remux_without_apply_builds_nothing(
     assert "keep" in capsys.readouterr().out
 
 
+@pytest.mark.needs_ffmpeg
+@pytest.mark.needs_mkvtoolnix
+def test_remux_with_apply_verifies_the_rebuild_against_the_plan(
+    media_fixtures: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The comparison is part of the verb, not a hint printed after it."""
+    config = tmp_path / "mkvkit.toml"
+    config.write_text(
+        '[policy]\nkeep_languages = ["eng", "deu"]\ndroppable_languages = ["fra"]\n'
+        'default_audio = "deu"\n',
+        encoding="utf-8",
+    )
+    staging = tmp_path / "staging"
+    code = mkvkit_cli.main(
+        ["--config", str(config), "remux", str(media_fixtures["tiny_multitrack.mkv"]),
+         "--staging", str(staging), "--original-language", "eng", "--apply"]
+    )
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "PASS (tracks dropped)" in out
+    assert "--dropped 3" in out
+    assert "--default-moved" in out
+    assert sorted(p.name for p in staging.iterdir()) == ["tiny_multitrack.mkv"]
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.needs_mkvtoolnix
+def test_remux_with_apply_fails_when_the_rebuild_does_not_verify(
+    media_fixtures: dict[str, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mkvkit import verify as verify_module
+
+    def always_fails(*_args: object, **_kwargs: object) -> verify_module.Comparison:
+        return verify_module.Comparison(problems=("a planted failure",), label="x")
+
+    monkeypatch.setattr(verify_module, "compare", always_fails)
+    config = tmp_path / "mkvkit.toml"
+    config.write_text(
+        '[policy]\nkeep_languages = ["eng"]\ndroppable_languages = ["fra"]\n',
+        encoding="utf-8",
+    )
+    code = mkvkit_cli.main(
+        ["--config", str(config), "remux", str(media_fixtures["tiny_multitrack.mkv"]),
+         "--staging", str(tmp_path / "staging"), "--original-language", "eng",
+         "--apply"]
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "did not verify" in out
+
+
 def test_swap_needs_a_parking_directory(capsys: pytest.CaptureFixture[str]) -> None:
     code = mkvkit_cli.main(["swap", "/srv/media/movies/a.mkv", "/srv/staging/a.mkv"])
     assert code == 2
@@ -245,3 +299,49 @@ def test_swap_without_apply_moves_nothing(
     assert code == 0
     assert keeper.read_bytes() == b"the original"
     assert "not swapped" in capsys.readouterr().out
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.needs_mkvtoolnix
+def test_chapters_apply_leaves_the_previous_document_in_the_rollback_directory(
+    media_fixtures: dict[str, Path], tmp_path: Path
+) -> None:
+    from mkvkit.chapters.xml import read_chapters
+
+    path = tmp_path / "example.mkv"
+    shutil.copyfile(media_fixtures["chapter_grid.mkv"], path)
+    before = read_chapters(path)
+    document = tmp_path / "names.xml"
+    document.write_text(
+        build(ChapterSet((Chapter(0, "The harbour at dawn"), Chapter(2_000_000_000)))),
+        encoding="utf-8", newline="\n",
+    )
+    rollback = tmp_path / "rollback"
+    code = mkvkit_cli.main(
+        ["chapters", "apply", str(path), "--document", str(document), "--apply",
+         "--rollback-dir", str(rollback)]
+    )
+    assert code == 0
+    saved = next(rollback.glob("*.chapters.xml")).read_text(encoding="utf-8")
+    assert len(parse(saved)) == len(before) == 12
+    assert len(list(rollback.glob("*.rollback.tsv"))) == 1
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.needs_mkvtoolnix
+def test_propedit_with_apply_writes_its_rollback_where_it_is_told(
+    media_fixtures: dict[str, Path], tmp_path: Path
+) -> None:
+    from mkvkit.probe import probe
+
+    path = tmp_path / "example.mkv"
+    shutil.copyfile(media_fixtures["tiny_multitrack.mkv"], path)
+    uid = probe(path).audio[2].uid
+    rollback = tmp_path / "rollback"
+    code = mkvkit_cli.main(
+        ["propedit", str(path), "--track", str(uid), "--language", "spa", "--apply",
+         "--rollback-dir", str(rollback)]
+    )
+    assert code == 0
+    tsv = next(rollback.glob("*.rollback.tsv")).read_text(encoding="utf-8")
+    assert f"{uid}\tlanguage\tfre" in tsv or f"{uid}\tlanguage\tfra" in tsv

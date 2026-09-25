@@ -105,7 +105,10 @@ def _scan(args: argparse.Namespace, config: Config) -> int:
         return 0
     print(f"{len(todo)} of {len(jobs)} track(s) to read")
 
-    detector = WhisperDetector(config.langid.model, device=config.langid.device)
+    detector = WhisperDetector(
+        config.langid.model, device=config.langid.device,
+        download_root=config.langid.model_dir,
+    )
     extractor = FfmpegExtractor(ffmpeg=find_tool("ffmpeg", config=config))
     for job in todo:
         evidence = scan_track(

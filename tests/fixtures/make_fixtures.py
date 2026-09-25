@@ -169,8 +169,8 @@ OPTIONAL_NAMES = ("tag_override.mkv", "drift_pair.mka")
 
 # -------------------------------------------------------------------- plumbing
 def ffmpeg_missing() -> str | None:
-    """None when both programs are on the PATH, otherwise what is missing."""
-    absent = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    """None when both programs can be found, otherwise what is missing."""
+    absent = [name for name in ("ffmpeg", "ffprobe") if locate(name) is None]
     return ", ".join(absent) if absent else None
 
 
@@ -184,18 +184,34 @@ def _alignment_available() -> bool:
 
 
 def mkvtoolnix_missing() -> str | None:
-    """None when the container tools are on the PATH, otherwise what is missing."""
+    """None when the container tools can be found, otherwise what is missing."""
     absent = [
         name for name in ("mkvmerge", "mkvpropedit", "mkvextract")
-        if shutil.which(name) is None
+        if locate(name) is None
     ]
     return ", ".join(absent) if absent else None
 
 
+def locate(program: str) -> str | None:
+    """Where a program is, found the way the toolkit itself finds it.
+
+    Not a bare PATH lookup: the toolkit also searches the platform's default
+    install directories, and a Windows installer of the container tools does
+    not put them on the PATH. A test gate that looked only at the PATH would
+    skip tests on a machine where every command under test works.
+    """
+    from mkvkit.tools import ToolNotFound, find_tool
+
+    try:
+        return str(find_tool(program))
+    except ToolNotFound:
+        return None
+
+
 def _run(program: str, args: Sequence[str]) -> str:
-    executable = shutil.which(program)
+    executable = locate(program)
     if executable is None:
-        raise RuntimeError(f"{program} is not on the PATH")
+        raise RuntimeError(f"{program} was not found")
     completed = subprocess.run(
         [executable, *args], capture_output=True, text=True,
         encoding="utf-8", errors="replace", check=False,

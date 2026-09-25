@@ -140,6 +140,10 @@ class ChapterSet:
     default: bool = True
     ordered: bool = False
     source: str | None = None
+    #: What the reader saw and this model cannot carry -- marks nested under a
+    #: mark, a second name in another language. Kept so :func:`build` can
+    #: refuse: writing this set back would delete those from the file.
+    unkept: tuple[str, ...] = ()
 
     def __len__(self) -> int:
         return len(self.chapters)
@@ -281,7 +285,17 @@ def read_chapters(
 
 def _edition(entry: ET.Element) -> ChapterSet:
     chapters: list[Chapter] = []
-    for atom in entry.findall("ChapterAtom"):
+    unkept: list[str] = []
+    for position, atom in enumerate(entry.findall("ChapterAtom"), 1):
+        nested = len(atom.findall(".//ChapterAtom"))
+        if nested:
+            unkept.append(f"mark {position} has {nested} mark(s) nested under it")
+        displays = len(atom.findall("ChapterDisplay"))
+        if displays > 1:
+            unkept.append(
+                f"mark {position} has {displays} names (one per language); only "
+                "the first is read"
+            )
         start = parse_timestamp(atom.findtext("ChapterTimeStart"))
         if start is None:
             raise ChapterError("a mark has no readable start time")
@@ -308,6 +322,7 @@ def _edition(entry: ET.Element) -> ChapterSet:
         edition_uid=_int(entry.findtext("EditionUID")),
         default=_flag(entry.findtext("EditionFlagDefault"), True),
         ordered=_flag(entry.findtext("EditionFlagOrdered"), False),
+        unkept=tuple(unkept),
     )
 
 
@@ -340,6 +355,12 @@ def build(
     chapter_set = (
         chapters if isinstance(chapters, ChapterSet) else ChapterSet(tuple(chapters))
     )
+    if chapter_set.unkept:
+        raise ChapterError(
+            "this set was read from a document with structure it cannot carry ("
+            + "; ".join(chapter_set.unkept)
+            + "), and writing it back would delete that from the file"
+        )
     root = ET.Element("Chapters")
     edition = ET.SubElement(root, "EditionEntry")
     if keep_uids and chapter_set.edition_uid is not None:

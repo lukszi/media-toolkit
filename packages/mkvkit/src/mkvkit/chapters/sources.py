@@ -408,9 +408,10 @@ class ChapterDatabase:
     def _require_enabled(self) -> None:
         if not self.enabled:
             raise SourceDisabled(
-                f"{self.name} is a scraped archive and ships disabled. Enable it "
-                "explicitly (--enable-chapterdb on the command line, or "
-                "enabled=True here) once you are content to send it requests."
+                f"{self.name} is a scraped archive and ships disabled. No command "
+                "reaches it; enable it explicitly by constructing "
+                "ChapterDatabase(..., enabled=True) once you are content to send "
+                "it requests."
             )
 
     def _cached(self, key: str) -> Path | None:

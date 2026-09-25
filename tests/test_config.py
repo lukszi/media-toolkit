@@ -88,6 +88,19 @@ x = 1
     assert any("nonsense" in p for p in problems)
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["http://someone:hunter2@127.0.0.1:8096", "https://someone@127.0.0.1:8920"],
+)
+def test_a_credential_inside_the_server_address_is_refused(url: str) -> None:
+    """It would be printed wherever the address is, so it is never accepted."""
+    with pytest.raises(ConfigError) as caught:
+        loads(f'[server]\nurl = "{url}"\n')
+    message = str(caught.value)
+    assert "must not carry a user name or password" in message
+    assert "hunter2" not in message and "someone" not in message
+
+
 def test_unknown_keys_are_named_not_ignored() -> None:
     with pytest.raises(ConfigError) as caught:
         loads('[paths]\nstagingg = "/srv/staging"\n')

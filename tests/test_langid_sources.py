@@ -251,3 +251,34 @@ def test_the_device_hint_is_coarse_on_purpose() -> None:
     assert device_hint("/srv/media/series/a.mkv") == "/"
     assert device_hint("C:" + "\\" + "Media" + "\\" + "a.mkv").endswith(":")
     assert device_hint("relative/a.mkv") == "relative"
+
+
+def test_the_model_cache_directory_from_the_configuration_reaches_the_model(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """[langid].model_dir is where the model files go; the loader is told so."""
+    from mkvkit import cli as mkvkit_cli
+    from mkvkit.langid import worker
+
+    seen: dict[str, Any] = {}
+
+    class Stop(Exception):
+        pass
+
+    def recording(model: str, **kwargs: Any) -> None:
+        seen.update(kwargs, model=model)
+        raise Stop
+
+    monkeypatch.setattr(worker, "WhisperDetector", recording)
+    jobs = tmp_path / "jobs.jsonl"
+    write_jobs(jobs, [Job(path="/srv/media/movies/example.mkv", stream_index=1,
+                          audio_ord=0)])
+    models = tmp_path / "models"
+    config = tmp_path / "mkvkit.toml"
+    config.write_text(f"[langid]\nmodel_dir = '{models.as_posix()}'\n", encoding="utf-8")
+    try:
+        mkvkit_cli.main(["--config", str(config), "langid", "scan", "--jobs", str(jobs),
+                         "--out", str(tmp_path / "results.jsonl")])
+    except Stop:
+        pass
+    assert seen["download_root"] == models

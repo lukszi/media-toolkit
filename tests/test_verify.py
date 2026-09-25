@@ -221,6 +221,22 @@ def test_an_intended_default_move_is_allowed_only_when_declared() -> None:
     assert compare(evidence(), built, TracksDropped(default_moved=True)).ok
 
 
+def test_a_moved_default_that_left_two_defaults_is_refused() -> None:
+    """Setting the new default without clearing the old one is half an edit."""
+    both = identified()
+    both["tracks"][2]["properties"]["default_track"] = True
+    result = compare(evidence(), evidence(identify=both), TracksDropped(default_moved=True))
+    assert not result.ok
+    assert any("2 audio track(s) carry the default flag" in p for p in result.problems)
+
+
+def test_a_moved_default_that_left_none_is_refused() -> None:
+    none = identified()
+    none["tracks"][1]["properties"]["default_track"] = False
+    result = compare(evidence(), evidence(identify=none), TracksDropped(default_moved=True))
+    assert not result.ok
+
+
 # ------------------------------------------------------------------ appending
 def test_appended_streams_are_allowed_when_declared() -> None:
     built = evidence(
@@ -310,6 +326,17 @@ def test_chapters_are_compared_by_count_time_and_name() -> None:
 
     renamed = compare(original, evidence(chapters=marks(["One", "Two", "Other"])))
     assert any("name" in p for p in renamed.problems)
+
+
+def test_replaced_marks_are_held_to_the_document_not_to_the_old_marks() -> None:
+    original = evidence(chapters=marks(["One", "Two", "Three"]))
+    written = marks(["Alpha", "Beta"])
+    delta = TracksDropped(replaced_chapters=written)
+    assert compare(original, evidence(chapters=marks(["Alpha", "Beta"])), delta).ok
+    wrong = compare(original, evidence(chapters=marks(["Alpha", "Other"])), delta)
+    assert any("name" in p for p in wrong.problems)
+    # Without the declaration the same file fails against the old marks.
+    assert not compare(original, evidence(chapters=marks(["Alpha", "Beta"]))).ok
 
 
 def test_a_mark_that_moved_by_less_than_a_millisecond_did_not_move() -> None:

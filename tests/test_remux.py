@@ -17,7 +17,7 @@ import pytest
 from mkvkit.chapters.xml import Chapter, ChapterSet
 from mkvkit.probe import probe_from_json
 from mkvkit.remux import RemuxPolicy, build, command, plan
-from mkvkit.run import Result
+from mkvkit.run import CommandFailed, Result
 
 SECOND = 1_000_000_000
 SOURCE = "/srv/media/movies/example.mkv"
@@ -231,8 +231,25 @@ def test_the_source_s_subtag_convention_is_kept() -> None:
 def test_a_moved_default_is_in_the_command() -> None:
     found = probe_of([("deu", None), ("eng", None), ("rus", None)], default=0)
     argv = command(plan(found, POLICY, output=STAGING, original_language="deu"))
-    assert "--default-track-flag" in argv
-    assert argv[argv.index("--default-track-flag") + 1] == "2:1"
+    flags = [argv[i + 1] for i, a in enumerate(argv) if a == "--default-track-flag"]
+    assert "2:1" in flags
+
+
+def test_moving_the_default_clears_it_on_every_other_kept_track() -> None:
+    """Otherwise the old default keeps its flag and the file has two."""
+    found = probe_of([("deu", None), ("eng", None), ("fra", None)], default=0)
+    moved = plan(found, POLICY, output=STAGING, original_language="deu")
+    assert moved.set_default == 2
+    argv = command(moved)
+    flags = [argv[i + 1] for i, a in enumerate(argv) if a == "--default-track-flag"]
+    assert sorted(flags) == ["1:0", "2:1", "3:0"]
+
+
+def test_a_plan_that_moves_the_default_asks_for_exactly_one() -> None:
+    found = probe_of([("deu", None), ("eng", None)], default=0)
+    delta = plan(found, POLICY, output=STAGING, original_language="deu").expected_delta()
+    assert delta.default_moved
+    assert delta.one_default_audio
 
 
 def test_a_chapter_document_that_fails_its_own_check_blocks_the_plan() -> None:
@@ -310,6 +327,86 @@ def test_a_blocked_plan_is_never_run(tmp_path: Path) -> None:
     assert runner.calls == []
 
 
+@pytest.mark.parametrize("occupant", ["example.mkv", "example.mkv.part"])
+def test_a_file_already_in_staging_is_refused_not_replaced(
+    tmp_path: Path, occupant: str
+) -> None:
+    output = tmp_path / "example.mkv"
+    there = tmp_path / occupant
+    there.write_bytes(b"an earlier rebuild somebody may still need")
+    runner = StandIn(writes=tmp_path / "example.mkv.part")
+    found = probe_of([("eng", None), ("rus", None)])
+    result = build(
+        plan(found, POLICY, output=output, original_language="eng"),
+        dry_run=False, runner=runner,
+    )
+    assert not result.ok
+    assert "already exists" in result.problems[0]
+    assert runner.calls == []
+    assert there.read_bytes() == b"an earlier rebuild somebody may still need"
+
+
+def test_a_chapter_document_already_in_staging_is_refused(tmp_path: Path) -> None:
+    output = tmp_path / "example.mkv"
+    document = tmp_path / "example.mkv.chapters.xml"
+    document.write_text("somebody's own document", encoding="utf-8")
+    runner = StandIn()
+    found = probe_of([("eng", None), ("rus", None)])
+    marks = ChapterSet((Chapter(0, "The harbour at dawn"), Chapter(600 * SECOND)))
+    result = build(
+        plan(found, POLICY, output=output, original_language="eng", chapters=marks),
+        dry_run=False, runner=runner,
+    )
+    assert not result.ok
+    assert runner.calls == []
+    assert document.read_text(encoding="utf-8") == "somebody's own document"
+
+
+class Failing(StandIn):
+    """Writes half a part-file and then fails, the way an interrupted mux does."""
+
+    def __call__(
+        self, tool: str, args: Sequence[str | Path], *, ok: Sequence[int] = (0,)
+    ) -> Result:
+        super().__call__(tool, args, ok=ok)
+        raise CommandFailed(Result(tool, tuple(str(a) for a in args), 2, "", "error"))
+
+
+def test_a_failed_build_leaves_no_part_file_and_no_chapter_document(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "example.mkv"
+    part = tmp_path / "example.mkv.part"
+    found = probe_of([("eng", None), ("rus", None)])
+    marks = ChapterSet((Chapter(0, "The harbour at dawn"), Chapter(600 * SECOND)))
+    with pytest.raises(CommandFailed):
+        build(
+            plan(found, POLICY, output=output, original_language="eng", chapters=marks),
+            dry_run=False, runner=Failing(writes=part),
+        )
+    assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+
+def test_a_warning_with_no_text_is_still_a_note(tmp_path: Path) -> None:
+    output = tmp_path / "example.mkv"
+    part = tmp_path / "example.mkv.part"
+
+    class Quiet(StandIn):
+        def __call__(
+            self, tool: str, args: Sequence[str | Path], *, ok: Sequence[int] = (0,)
+        ) -> Result:
+            part.write_bytes(b"a rebuilt file")
+            return Result(tool, tuple(str(a) for a in args), 1, "", "")
+
+    found = probe_of([("eng", None), ("rus", None)])
+    result = build(
+        plan(found, POLICY, output=output, original_language="eng"),
+        dry_run=False, runner=Quiet(),
+    )
+    assert result.applied
+    assert any("gave no message" in note for note in result.notes)
+
+
 # ------------------------------------------------------------- against the files
 @pytest.mark.needs_ffmpeg
 @pytest.mark.needs_mkvtoolnix
@@ -359,3 +456,29 @@ def test_a_real_rebuild_with_chapters_does_not_end_up_with_two_sets(
     rebuilt = probe(staged)
     assert rebuilt.chapter_count == 2
     assert rebuilt.edition_count == 1
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.needs_mkvtoolnix
+def test_a_real_rebuild_that_moves_the_default_leaves_exactly_one(
+    media_fixtures: dict[str, Path], tmp_path: Path
+) -> None:
+    from mkvkit.probe import probe
+    from mkvkit.verify import collect, compare
+
+    source = media_fixtures["tiny_multitrack.mkv"]
+    found = probe(source)
+    assert found.audio[0].default is True
+    policy = RemuxPolicy(
+        keep_languages=frozenset({"eng", "deu"}),
+        droppable_languages=frozenset({"fra"}),
+        default_audio="deu",
+    )
+    staged = tmp_path / source.name
+    remux = plan(found, policy, output=staged, original_language="eng")
+    assert remux.set_default is not None
+    assert build(remux, dry_run=False).ok
+    rebuilt = probe(staged)
+    assert [t.effective_language for t in rebuilt.audio if t.default] == ["deu"]
+    comparison = compare(collect(source), collect(staged), remux.expected_delta())
+    assert comparison.ok, comparison.problems

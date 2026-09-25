@@ -31,9 +31,13 @@ whole-element comparison would report every tag as lost and re-added on every
 single run -- which is precisely where a real loss would hide.
 
 **A rollback artefact, always.** Generated before the edit, from the file's own
-state, whether or not anything is applied: the inverse track edits, the
-chapter document the file had, the tag document the file had. Generating it is
-cheap; having to reconstruct it afterwards is not possible.
+state, whether or not anything is applied: the previous value of every track
+property the edit touches, the chapter document the file had and the tag
+document the file had, both exactly as the extractor printed them. On an
+applied edit it is written to disk *before* the editor runs -- to the
+directory the caller names, or ``<[paths].work>/rollback`` -- and an edit whose
+rollback cannot be written does not happen. Generating it is cheap; having to
+reconstruct it afterwards is not possible.
 
 **Dry run by default.** Nothing here writes unless it is told twice: once by
 being called, and once by ``dry_run=False``.
@@ -43,6 +47,7 @@ being called, and once by ``dry_run=False``.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import tempfile
 from collections.abc import Sequence
@@ -62,7 +67,9 @@ __all__ = [
     "PropeditError",
     "PropeditResult",
     "Rollback",
+    "RollbackFiles",
     "TrackEdit",
+    "default_rollback_dir",
     "safe_propedit",
 ]
 
@@ -130,24 +137,95 @@ class TrackEdit:
 
 
 @dataclass(frozen=True)
+class RollbackFiles:
+    """Where a rollback was written. The documents are absent when not captured."""
+
+    tsv: Path
+    chapters: Path | None = None
+    tags: Path | None = None
+
+
+@dataclass(frozen=True)
 class Rollback:
-    """Everything needed to put the file back, captured before the edit."""
+    """Everything needed to put the file back, captured before the edit.
+
+    ``rows`` is ``(track identifier, property, previous value)`` for every
+    property the edit touches; an empty previous value means the file had
+    none, and putting it back means deleting the property. The documents are
+    the extractor's own output, so nothing the reader here does not model --
+    nested marks, a name in a second language, a binary tag -- is lost from
+    them.
+    """
 
     path: Path
     track_edits: tuple[TrackEdit, ...] = ()
     chapters_xml: str | None = None
     tags_xml: str | None = None
+    rows: tuple[tuple[int, str, str], ...] = ()
 
-    def to_tsv(self) -> str:
+    def to_tsv(self, files: RollbackFiles | None = None) -> str:
         """One row per track property, for an audit log a person can read."""
         rows = ["path\ttrack_uid\tproperty\tprevious_value"]
-        for edit in self.track_edits:
-            for key, value in edit.properties():
-                rows.append(f"{self.path}\t{edit.uid}\t{key}\t{value}")
-        for name, document in (("chapters", self.chapters_xml), ("tags", self.tags_xml)):
-            if document is not None:
+        for uid, key, value in self.rows:
+            rows.append(f"{self.path}\t{uid}\t{key}\t{value}")
+        for name, document, where in (
+            ("chapters", self.chapters_xml, files.chapters if files else None),
+            ("tags", self.tags_xml, files.tags if files else None),
+        ):
+            if document is None:
+                continue
+            if not document.strip():
+                rows.append(f"{self.path}\t-\t{name}\t(none)")
+            elif where is not None:
+                rows.append(f"{self.path}\t-\t{name}\t{where.name}")
+            else:
                 rows.append(f"{self.path}\t-\t{name}\t{len(document)} bytes captured")
         return "\n".join(rows) + "\n"
+
+    def write(self, directory: Path, *, now: dt.datetime | None = None) -> RollbackFiles:
+        """Put the rollback on disk. Never overwrites: an existing name is an error.
+
+        The names carry the file's own name and the time to the microsecond,
+        so two passes over the same file leave two artefacts, not one.
+        """
+        directory.mkdir(parents=True, exist_ok=True)
+        moment = (now or dt.datetime.now(dt.UTC)).strftime("%Y%m%dT%H%M%S%fZ")
+        stem = f"{self.path.name}.{moment}"
+        chapters = tags = None
+        if self.chapters_xml is not None and self.chapters_xml.strip():
+            chapters = directory / f"{stem}.chapters.xml"
+            _write_new(chapters, self.chapters_xml)
+        if self.tags_xml is not None and self.tags_xml.strip():
+            tags = directory / f"{stem}.tags.xml"
+            _write_new(tags, self.tags_xml)
+        files = RollbackFiles(
+            tsv=directory / f"{stem}.rollback.tsv", chapters=chapters, tags=tags
+        )
+        _write_new(files.tsv, self.to_tsv(files))
+        return files
+
+    def restore_command(self, files: RollbackFiles | None = None) -> list[str]:
+        """The header editor's arguments that put every captured value back."""
+        argv: list[str] = [str(self.path)]
+        for uid, key, value in self.rows:
+            argv += ["--edit", f"track:={uid}"]
+            argv += ["--set", f"{key}={value}"] if value else ["--delete", key]
+        if self.chapters_xml is not None:
+            # An empty document is how the editor is told to remove every mark.
+            argv += ["--chapters", str(files.chapters) if files and files.chapters else ""]
+        if self.tags_xml is not None:
+            argv += ["--tags", f"all:{files.tags}" if files and files.tags else "all:"]
+        return argv
+
+
+def _write_new(path: Path, text: str) -> None:
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
+def default_rollback_dir(config: Config | None) -> Path:
+    """Where a rollback goes when nobody said: ``<[paths].work>/rollback``."""
+    return (config if config is not None else Config()).paths.work / "rollback"
 
 
 @dataclass(frozen=True)
@@ -188,11 +266,14 @@ def safe_propedit(
     runner: Runner | None = None,
     config: Config | None = None,
     work_dir: Path | None = None,
+    rollback_dir: Path | None = None,
 ) -> PropeditResult:
     """Apply header edits to one file and prove that nothing else moved.
 
     Returns a result rather than raising for a refused edit: a pass over a
     collection has to record what it did not do as carefully as what it did.
+    An applied edit first writes its rollback to ``rollback_dir`` (by default
+    :func:`default_rollback_dir`); if that fails, nothing is edited.
     """
     target = Path(path)
     run = runner if runner is not None else default_runner(config)
@@ -217,6 +298,16 @@ def safe_propedit(
     problems.extend(_check_language_overrides(before, wanted, tags))
     if not (wanted or chapters is not None or tags is not None or title is not None):
         problems.append("nothing to do: no edit was asked for")
+    if chapters is not None and chapters.unkept:
+        problems.append(
+            "the chapter document has structure that would be lost on writing: "
+            + "; ".join(chapters.unkept)
+        )
+    if tags is not None and tags.unkept:
+        problems.append(
+            "the tag document has element(s) that would be lost on writing: "
+            + ", ".join(tags.unkept)
+        )
     if problems:
         return PropeditResult(target, problems=tuple(problems), before=before)
 
@@ -235,9 +326,17 @@ def safe_propedit(
                 before=before,
                 changed=tuple(_intended(wanted, chapters, tags, title)),
             )
+        # The rollback reaches the disk before the file is touched. If it
+        # cannot be written this raises, and the edit does not happen.
+        files = rollback.write(
+            rollback_dir if rollback_dir is not None else default_rollback_dir(config)
+        )
+        notes.append(f"rollback written to {files.tsv}")
         result = run("mkvpropedit", argv, ok=_EDIT_OK)
         if result.returncode == 1:
-            notes.append(f"the editor warned: {result.tail.splitlines()[-1][:200]}")
+            lines = result.tail.splitlines()
+            said = lines[-1][:200] if lines else "(it gave no message)"
+            notes.append(f"the editor warned: {said}")
 
     after = probe(target, runner=run)
     problems.extend(
@@ -305,6 +404,7 @@ def _rollback_for(
     run: Runner,
 ) -> Rollback:
     inverse: list[TrackEdit] = []
+    rows: list[tuple[int, str, str]] = []
     for edit in edits:
         track = before.track_by_uid(edit.uid)
         if track is None:
@@ -319,14 +419,30 @@ def _rollback_for(
                 enabled=track.enabled if edit.enabled is not None else None,
             )
         )
+        previous = {
+            "language": track.language_raw or "",
+            "name": track.name or "",
+            "flag-default": "1" if track.default else "0",
+            "flag-forced": "1" if track.forced else "0",
+            "flag-enabled": "1" if track.enabled else "0",
+        }
+        rows.extend((edit.uid, key, previous[key]) for key, _ in edit.properties())
+    # The documents are kept exactly as the extractor printed them, not as
+    # this package's model of them: the model does not carry everything a
+    # file can hold, and a rollback that drops what it does not understand
+    # is a second deletion.
     chapters_document: str | None = None
     if chapters is not None:
-        existing = chapters_xml.read_chapters(path, runner=run)
-        chapters_document = chapters_xml.build(existing) if existing else ""
+        chapters_document = _extracted(run, path, "chapters")
     tags_document: str | None = None
     if tags is not None:
-        tags_document = tags_module.build(tags_module.read_tags(path, runner=run))
-    return Rollback(path, tuple(inverse), chapters_document, tags_document)
+        tags_document = _extracted(run, path, "tags")
+    return Rollback(path, tuple(inverse), chapters_document, tags_document, tuple(rows))
+
+
+def _extracted(run: Runner, path: Path, what: str) -> str:
+    text = run("mkvextract", [str(path), what], ok=(0, 1)).stdout
+    return text.lstrip("\ufeff") if text.strip() else ""
 
 
 def _command(

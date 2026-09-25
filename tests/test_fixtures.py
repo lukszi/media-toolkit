@@ -10,6 +10,7 @@ that passes against it proves nothing.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -132,3 +133,31 @@ def test_building_twice_changes_nothing(media_fixtures: dict[str, Path]) -> None
     before = {name: path.stat().st_mtime_ns for name, path in media_fixtures.items()}
     after = {name: path.stat().st_mtime_ns for name, path in build().items()}
     assert before == after
+
+
+def test_the_test_gate_finds_programs_the_way_the_toolkit_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not a bare PATH lookup: a Windows install of the container tools is not on it.
+
+    A gate that only looked at the PATH would skip every container-tool test
+    on a machine where every command under test works.
+    """
+    from mkvkit.tools import clear_cache
+
+    from tests.fixtures.make_fixtures import locate
+
+    program = tmp_path / ("mkvmerge.exe" if os.name == "nt" else "mkvmerge")
+    program.write_bytes(b"")
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    monkeypatch.setenv("MKVKIT_MKVMERGE", str(program))
+    monkeypatch.setattr("mkvkit.tools.tool_version", lambda _path: "stand-in")
+    clear_cache()
+    try:
+        assert locate("mkvmerge") == str(program.resolve())
+        monkeypatch.delenv("MKVKIT_MKVMERGE")
+        monkeypatch.setattr("mkvkit.tools.search_locations", lambda *_a, **_k: [])
+        clear_cache()
+        assert locate("mkvmerge") is None
+    finally:
+        clear_cache()

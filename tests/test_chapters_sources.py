@@ -211,11 +211,14 @@ def test_the_adapter_satisfies_the_protocol(tmp_path: Path) -> None:
 def test_it_does_nothing_until_it_is_enabled(tmp_path: Path) -> None:
     """A scraped archive reachable through a default is reachable by accident."""
     source, fetch = database(tmp_path)
-    with pytest.raises(SourceDisabled):
+    with pytest.raises(SourceDisabled) as caught:
         source.search("The Quiet Harbour")
     with pytest.raises(SourceDisabled):
         source.get("101")
     assert fetch.calls == []
+    # The way to enable it is named, and it is one that exists.
+    assert "enabled=True" in str(caught.value)
+    assert "--enable" not in str(caught.value)
 
 
 def test_a_listing_becomes_candidates(tmp_path: Path) -> None:

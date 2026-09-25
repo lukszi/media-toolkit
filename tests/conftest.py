@@ -9,15 +9,16 @@ a report that still means something.
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from tests.fixtures import build, ffmpeg_missing
+from tests.fixtures.make_fixtures import locate
 
-#: marker -> the programs it needs on the PATH
+#: marker -> the programs it needs, found the way the toolkit finds them
+#: (configuration, environment, PATH, then the platform install directories)
 MARKER_TOOLS = {
     "needs_ffmpeg": ("ffmpeg", "ffprobe"),
     "needs_mkvtoolnix": ("mkvmerge", "mkvpropedit"),
@@ -31,7 +32,7 @@ def pytest_collection_modifyitems(
         for marker, programs in MARKER_TOOLS.items():
             if marker not in item.keywords:
                 continue
-            absent = [p for p in programs if shutil.which(p) is None]
+            absent = [p for p in programs if locate(p) is None]
             if absent:
                 item.add_marker(
                     pytest.mark.skip(reason=f"not installed: {', '.join(absent)}")
@@ -55,3 +56,19 @@ def _no_leaked_secrets() -> Iterator[None]:
     clear_secrets()
     yield
     clear_secrets()
+
+
+@pytest.fixture(autouse=True)
+def _rollbacks_stay_in_the_test(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An applied edit writes its rollback before it edits; not into the checkout.
+
+    The default location is ``<[paths].work>/rollback`` relative to wherever
+    the run starts, which in a test run is the repository. A test that wants
+    the real default imports the function and calls it directly.
+    """
+    from mkvkit import propedit
+
+    where = tmp_path_factory.mktemp("rollback")
+    monkeypatch.setattr(propedit, "default_rollback_dir", lambda _config: where)

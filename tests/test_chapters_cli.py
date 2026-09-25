@@ -144,6 +144,48 @@ def test_match_writes_the_document_it_accepted(
     assert "00:05:00.000000000" in written  # the file's own mark, not the candidate's
 
 
+def test_match_never_replaces_an_existing_out_file_unless_forced(
+    media: Path, candidate: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "result.xml"
+    out.write_text("somebody's own document", encoding="utf-8")
+    argv = ["chapters", "match", str(media), "--candidate", str(candidate),
+            "--out", str(out)]
+    assert mkvkit_cli.main(argv) == 1
+    assert "already exists" in capsys.readouterr().out
+    assert out.read_text(encoding="utf-8") == "somebody's own document"
+    assert mkvkit_cli.main([*argv, "--force"]) == 0
+    assert "The Harbour at Dawn" in out.read_text(encoding="utf-8")
+
+
+def test_rollback_never_replaces_an_existing_out_file_unless_forced(
+    media: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "rollback.xml"
+    out.write_text("somebody's own document", encoding="utf-8")
+    argv = ["chapters", "rollback", str(media), "--out", str(out)]
+    assert mkvkit_cli.main(argv) == 1
+    assert "already exists" in capsys.readouterr().out
+    assert out.read_text(encoding="utf-8") == "somebody's own document"
+    assert mkvkit_cli.main([*argv, "--force"]) == 0
+    assert "<ChapterTimeStart>" in out.read_text(encoding="utf-8")
+
+
+def test_rollback_refuses_marks_it_would_write_back_incompletely(
+    media: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    nested = ChapterSet(marks().chapters, unkept=("mark 2 has 1 mark(s) nested under it",))
+    monkeypatch.setattr(
+        commands_module.chapters_xml, "read_chapters",
+        lambda target, *, config=None, runner=None: nested,
+    )
+    out = tmp_path / "rollback.xml"
+    assert mkvkit_cli.main(["chapters", "rollback", str(media), "--out", str(out)]) == 1
+    assert "nested" in capsys.readouterr().out
+    assert not out.exists()
+
+
 def test_match_with_evidence_that_disagrees_exits_non_zero(
     media: Path, candidate: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -267,7 +309,7 @@ def test_plan_defaults_to_a_dry_run(
     )
     monkeypatch.setattr(
         commands_module.plan_module, "apply",
-        lambda plan, *, dry_run=True, runner=None, config=None: (
+        lambda plan, *, dry_run=True, runner=None, config=None, rollback_dir=None: (
             seen.append(dry_run)
             or commands_module.plan_module.PropeditResult(plan.path)
         ),
@@ -291,7 +333,7 @@ def test_plan_writes_only_when_asked_twice(
     )
     monkeypatch.setattr(
         commands_module.plan_module, "apply",
-        lambda plan, *, dry_run=True, runner=None, config=None: (
+        lambda plan, *, dry_run=True, runner=None, config=None, rollback_dir=None: (
             seen.append(dry_run)
             or commands_module.plan_module.PropeditResult(plan.path)
         ),

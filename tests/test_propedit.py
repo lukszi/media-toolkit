@@ -20,7 +20,7 @@ import pytest
 from mkvkit import tags as tags_module
 from mkvkit.chapters.xml import Chapter, ChapterSet
 from mkvkit.probe import probe
-from mkvkit.propedit import TrackEdit, safe_propedit
+from mkvkit.propedit import TrackEdit, default_rollback_dir, safe_propedit
 from mkvkit.run import Result
 
 SECOND = 1_000_000_000
@@ -294,6 +294,120 @@ def test_a_warning_from_the_editor_is_a_note_and_not_a_failure(
     assert any("warned" in note for note in result.notes)
 
 
+# -------------------------------------------------------------------- rollback
+class Watching(StandIn):
+    """Records, at the moment the editor runs, what the rollback directory holds."""
+
+    def __init__(self, *args: Any, directory: Path, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.directory = directory
+        self.present_at_edit: list[str] = []
+
+    def __call__(
+        self, tool: str, args: Sequence[str | Path], *, ok: Sequence[int] = (0,)
+    ) -> Result:
+        if tool == "mkvpropedit":
+            self.present_at_edit = sorted(p.name for p in self.directory.iterdir())
+        return super().__call__(tool, args, ok=ok)
+
+
+def test_an_applied_edit_writes_its_rollback_before_it_edits(tmp_path: Path) -> None:
+    directory = tmp_path / "rollback"
+    runner = Watching(
+        [identified(language="eng", name="A name"), identified(language="deu", name="A name")],
+        extract=["<Chapters><EditionEntry/></Chapters>"],
+        directory=directory,
+    )
+    result = safe_propedit(
+        target(tmp_path), [TrackEdit(FIRST_UID, language="deu")],
+        chapters=ChapterSet((Chapter(0, "A name"), Chapter(SECOND))),
+        dry_run=False, runner=runner, rollback_dir=directory,
+    )
+    assert result.applied
+    assert any(name.endswith(".rollback.tsv") for name in runner.present_at_edit)
+    assert any(name.endswith(".chapters.xml") for name in runner.present_at_edit)
+    tsv = next(directory.glob("*.rollback.tsv")).read_text(encoding="utf-8")
+    assert f"{FIRST_UID}\tlanguage\teng" in tsv
+    assert any("rollback written to" in note for note in result.notes)
+
+
+def test_an_edit_whose_rollback_cannot_be_written_does_not_happen(
+    tmp_path: Path,
+) -> None:
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("a file where the directory would go", encoding="utf-8")
+    runner = StandIn([identified(language="eng")])
+    with pytest.raises(OSError):
+        safe_propedit(
+            target(tmp_path), [TrackEdit(FIRST_UID, language="deu")],
+            dry_run=False, runner=runner, rollback_dir=blocked,
+        )
+    assert runner.edits == []
+
+
+def test_a_rollback_is_never_written_over_an_earlier_one(tmp_path: Path) -> None:
+    import datetime as dt
+
+    from mkvkit.propedit import Rollback
+
+    rollback = Rollback(tmp_path / "example.mkv", rows=((FIRST_UID, "name", "Old"),))
+    moment = dt.datetime(2026, 1, 2, 3, 4, 5, tzinfo=dt.UTC)
+    first = rollback.write(tmp_path / "rb", now=moment)
+    before = first.tsv.read_bytes()
+    with pytest.raises(FileExistsError):
+        rollback.write(tmp_path / "rb", now=moment)
+    assert first.tsv.read_bytes() == before
+
+
+def test_the_restore_command_deletes_what_the_file_did_not_have(tmp_path: Path) -> None:
+    from mkvkit.propedit import Rollback
+
+    rollback = Rollback(
+        tmp_path / "example.mkv",
+        rows=((FIRST_UID, "name", ""), (FIRST_UID, "language", "eng")),
+        chapters_xml="",
+    )
+    argv = rollback.restore_command()
+    assert argv[1:] == [
+        "--edit", f"track:={FIRST_UID}", "--delete", "name",
+        "--edit", f"track:={FIRST_UID}", "--set", "language=eng",
+        "--chapters", "",
+    ]
+
+
+def test_the_default_rollback_location_is_under_the_work_directory() -> None:
+    from mkvkit.config import Config, PathsConfig
+
+    config = Config(paths=PathsConfig(work=Path("/srv/work")))
+    assert default_rollback_dir(config) == Path("/srv/work") / "rollback"
+
+
+def test_a_tag_document_that_would_lose_elements_is_refused_before_writing(
+    tmp_path: Path,
+) -> None:
+    runner = StandIn([identified()])
+    odd = tags_module.TagSet(unkept=("Simple/Something",))
+    result = safe_propedit(
+        target(tmp_path), tags=odd, dry_run=False, runner=runner,
+        rollback_dir=tmp_path / "rb",
+    )
+    assert not result.ok
+    assert "Simple/Something" in result.problems[0]
+    assert runner.edits == []
+    assert not (tmp_path / "rb").exists()
+
+
+def test_a_chapter_document_that_would_lose_structure_is_refused(tmp_path: Path) -> None:
+    runner = StandIn([identified()])
+    odd = ChapterSet((Chapter(0),), unkept=("mark 1 has 1 mark(s) nested under it",))
+    result = safe_propedit(
+        target(tmp_path), chapters=odd, dry_run=False, runner=runner,
+        rollback_dir=tmp_path / "rb",
+    )
+    assert not result.ok
+    assert runner.edits == []
+
+
 # -------------------------------------------------------------- against the files
 @pytest.mark.needs_ffmpeg
 @pytest.mark.needs_mkvtoolnix
@@ -421,3 +535,54 @@ def test_both_halves_of_a_language_change_in_one_call(
     assert track.language == "spa"
     assert track.tag_language == "spa"
     assert after.language_disagreements == ()
+
+
+@pytest.mark.needs_ffmpeg
+@pytest.mark.needs_mkvtoolnix
+def test_a_written_rollback_puts_the_real_file_back(
+    media_fixtures: dict[str, Path], tmp_path: Path
+) -> None:
+    """Edit a track, the marks and the tags; then apply the artefact and compare."""
+    from mkvkit.chapters.xml import read_chapters
+    from mkvkit.run import default_runner
+
+    path = tmp_path / "example.mkv"
+    shutil.copyfile(media_fixtures["chapter_grid.mkv"], path)
+    before = probe(path)
+    before_marks = read_chapters(path)
+    before_tags = tags_module.read_tags(path)
+    track = before.audio[0]
+    assert track.uid is not None
+    merged = tags_module.merge(
+        before_tags, [tags_module.provenance("chapter names", "an example source")]
+    )
+    directory = tmp_path / "rollback"
+    result = safe_propedit(
+        path, [TrackEdit(track.uid, language="spa", name="Another name")],
+        chapters=ChapterSet((Chapter(0, "The harbour at dawn"), Chapter(2 * SECOND))),
+        tags=merged, dry_run=False, rollback_dir=directory,
+    )
+    assert result.ok, result.problems
+    assert result.rollback is not None
+    assert probe(path).chapter_count == 2
+
+    files = sorted(directory.iterdir())
+    tsv = next(p for p in files if p.name.endswith(".rollback.tsv"))
+    chapters = next(p for p in files if p.name.endswith(".chapters.xml"))
+    tags = next((p for p in files if p.name.endswith(".tags.xml")), None)
+    from mkvkit.propedit import RollbackFiles
+
+    restore = result.rollback.restore_command(RollbackFiles(tsv, chapters, tags))
+    default_runner()("mkvpropedit", restore, ok=(0, 1))
+
+    after = probe(path)
+    restored = after.track_by_uid(track.uid)
+    assert restored is not None
+    assert (restored.language, restored.name) == (track.language, track.name)
+    # The editor gives an edition without an identifier one of its own on
+    # write; the marks themselves -- times, names, flags -- are what came back.
+    def marks(found: ChapterSet) -> list[tuple[object, ...]]:
+        return [(c.start_ns, c.end_ns, c.name, c.hidden, c.enabled) for c in found]
+
+    assert marks(read_chapters(path)) == marks(before_marks)
+    assert tags_module.read_tags(path).triples == before_tags.triples

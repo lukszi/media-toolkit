@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from mkvkit.run import CommandFailed, Result
 from mkvkit.swap import SwapPair, parked_path, summarise, swap, swap_all
 
 
@@ -111,6 +113,33 @@ def test_a_failed_check_puts_the_original_back(tmp_path: Path) -> None:
     assert "put back" in result.problems[-1]
     assert keeper.read_bytes() == b"the original file"
     assert not parked_path(keeper, parked).exists()
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [
+        CommandFailed(Result("mkvmerge", ("mkvmerge", "-J"), 2, "", "cannot open")),
+        KeyboardInterrupt(),
+    ],
+    ids=["the-check-raised", "ctrl-c"],
+)
+def test_a_check_that_cannot_finish_puts_the_original_back(
+    tmp_path: Path, interruption: BaseException
+) -> None:
+    """A check that raised verified nothing, so the arrived file must not stay."""
+    keeper, replacement, parked = tree(tmp_path)
+
+    def blow_up(_path: Path) -> list[str]:
+        raise interruption
+
+    with pytest.raises(type(interruption)):
+        swap(
+            SwapPair(keeper, replacement), parked_dir=parked, dry_run=False,
+            check=blow_up,
+        )
+    assert keeper.read_bytes() == b"the original file"
+    assert not parked_path(keeper, parked).exists()
+    assert replacement.is_file()
 
 
 def test_the_check_reads_the_file_at_its_destination(tmp_path: Path) -> None:

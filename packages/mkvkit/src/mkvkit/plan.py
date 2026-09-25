@@ -175,6 +175,7 @@ def apply(
     dry_run: bool = True,
     runner: Runner | None = None,
     config: Config | None = None,
+    rollback_dir: Path | None = None,
 ) -> PropeditResult:
     """Carry out one plan, in one invocation.
 
@@ -194,6 +195,7 @@ def apply(
         dry_run=dry_run,
         runner=runner,
         config=config,
+        rollback_dir=rollback_dir,
     )
 
 

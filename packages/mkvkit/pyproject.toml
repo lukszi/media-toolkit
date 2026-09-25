@@ -32,8 +32,6 @@ mkvkit = "mkvkit.cli:main"
 # spoken-language identification: the detector and its runtime. Model weights
 # are never vendored -- the model name and its cache directory are config.
 langid = ["faster-whisper>=1.2", "ctranslate2>=4.8"]
-# the numeric half: measurement without a speech model
-align = ["numpy>=1.26", "scipy>=1.11"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.version]

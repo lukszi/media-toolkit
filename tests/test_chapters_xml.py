@@ -106,6 +106,43 @@ def test_a_document_with_two_editions_is_refused_rather_than_narrowed() -> None:
         parse(two)
 
 
+NESTED = """<?xml version="1.0"?>
+<Chapters>
+  <EditionEntry>
+    <ChapterAtom>
+      <ChapterTimeStart>00:00:00.000000000</ChapterTimeStart>
+      <ChapterDisplay>
+        <ChapterString>The harbour at dawn</ChapterString>
+        <ChapterLanguage>eng</ChapterLanguage>
+      </ChapterDisplay>
+      <ChapterDisplay>
+        <ChapterString>Le port</ChapterString>
+        <ChapterLanguage>fre</ChapterLanguage>
+      </ChapterDisplay>
+    </ChapterAtom>
+    <ChapterAtom>
+      <ChapterTimeStart>00:10:00.000000000</ChapterTimeStart>
+      <ChapterAtom><ChapterTimeStart>00:12:00.000000000</ChapterTimeStart></ChapterAtom>
+    </ChapterAtom>
+  </EditionEntry>
+</Chapters>
+"""
+
+
+def test_structure_the_model_cannot_carry_is_recorded_and_never_written() -> None:
+    """Nested marks and second-language names would be deleted by a write-back."""
+    read = parse(NESTED)
+    assert len(read) == 2
+    assert any("2 names" in reason for reason in read.unkept)
+    assert any("nested" in reason for reason in read.unkept)
+    with pytest.raises(ChapterError, match="nested"):
+        build(read)
+    with pytest.raises(ChapterError):
+        rollback(read)
+    with pytest.raises(ChapterError):
+        build(read.renamed(["One", "Two"]))
+
+
 def test_a_mark_without_a_start_time_is_an_error() -> None:
     broken = DOCUMENT.replace("<ChapterTimeStart>00:00:00.000000000</ChapterTimeStart>", "")
     with pytest.raises(ChapterError):

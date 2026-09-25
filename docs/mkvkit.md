@@ -51,8 +51,13 @@ mkvkit swap "/srv/media/movies/.../the-quiet-harbour.mkv" \
     /srv/staging/the-quiet-harbour.mkv --parked /srv/parked --apply
 ```
 
-The rebuild prints the verify command for what it just built, with the dropped
-streams already filled in, because that is the step people skip.
+`remux --apply` verifies what it just built before it exits: both files are
+read in full, one hash per stream, and compared against the rebuild's own plan
+(the dropped streams, a moved default, a replaced chapter set). A rebuild that
+does not verify exits 1 and stays in staging, and must not be swapped in. It
+also prints the equivalent `mkvkit verify` command, with `--dropped`,
+`--default-moved` and `--chapters` already filled in, so the check can be
+repeated later -- the separate `verify` line above is that repeat.
 
 ---
 
@@ -102,12 +107,22 @@ for problem in selfcheck(marks, runtime_s=5400.0):
 open("rollback.xml", "w").write(rollback(marks))
 ```
 
+`mkvkit chapters rollback FILE --out DOC` and `mkvkit chapters match ... --out
+DOC` never replace an existing `DOC`; pass `--force` to do that on purpose.
+
 Applying a document **replaces** the element: a document with two marks where
 the file has sixteen deletes fourteen. So `selfcheck()` is not optional, and
 it blocks an empty document, marks that do not increase, two marks on one
 timestamp, a hidden mark, a last mark past the runtime, a count that does not
 match the file, a name carrying a replacement character, and a document whose
 names are all labels.
+
+The reader models one edition of top-level marks with one name each. A file
+or document with marks nested under a mark, or a mark named in more than one
+language, is read (so it can be shown and compared) but never written back
+from that model: `build()` and `rollback()` raise, and `chapters apply`,
+`chapters rollback` and `remux --chapters` refuse, because the write would
+delete what the model does not carry.
 
 **A mark with no name has no display block.** Writing `Chapter 7` into a file
 looks the same in a player and is not reversible by inspection, because
@@ -212,7 +227,15 @@ Three rules, enforced rather than remembered:
   built by merging into what is already there;
 - compare tags as `(track identifiers, name, value)` triples -- the editor
   re-emits the target block in its own normal form, so anything finer reports
-  every tag as lost and re-added on every run.
+  every tag as lost and re-added on every run. A nested tag is named by its
+  path (`ARTIST/SORT_WITH`) and a binary value by its text, so a nesting that
+  came back flattened or a binary value that came back empty is a loss.
+
+A read keeps what a simple tag can carry -- nested simple tags, a binary
+value and its format, both language elements and the default flag -- and
+`build()` writes all of it back. A document holding any element outside that
+set is read, but `build()` refuses it (`TagError`), so it is never written
+back with that element missing.
 
 `provenance()` writes where something came from into the file itself. Merging
 the same provenance twice leaves one.
@@ -234,8 +257,32 @@ keyed on the identifier: everything asked for happened, nothing else moved,
 the chapter count only moved if a document was written, and the tags survived.
 
 The rollback is captured before the edit whether or not anything is applied --
-the inverse of every property, plus the chapter and tag documents the file had.
-It cannot be reconstructed afterwards.
+the previous value of every property the edit touches, plus the chapter and
+tag documents the file had, exactly as the extractor printed them. It cannot
+be reconstructed afterwards.
+
+On an applied edit it is **written to disk before the editor runs**, and an
+edit whose rollback cannot be written does not happen. `mkvkit propedit`,
+`mkvkit chapters apply` and `mkvkit chapters plan` take `--rollback-dir DIR`;
+without it the directory is `<[paths].work>/rollback` (`./work/rollback` with
+the default configuration). Each applied edit leaves, named after the file and
+the time to the microsecond, and never overwriting an earlier one:
+
+- `NAME.TIME.rollback.tsv` -- `path`, `track_uid`, `property`,
+  `previous_value`, one row per property the edit touched (an empty previous
+  value means the file had none), plus a row naming the saved chapter or tag
+  document, or `(none)` when the file had none;
+- `NAME.TIME.chapters.xml` -- the chapter document the file had, when marks
+  were written;
+- `NAME.TIME.tags.xml` -- the tag document the file had, when tags were written.
+
+To put a file back, hand those to the header editor: per TSV row
+`mkvpropedit FILE --edit track:=UID --set PROPERTY=VALUE` (or `--delete
+PROPERTY` where the previous value is empty), `--chapters NAME.TIME.chapters.xml`
+and `--tags all:NAME.TIME.tags.xml` (an empty `--chapters ""` or `--tags all:`
+where the file had none). `Rollback.restore_command(files)` builds that
+argument list; the saved documents are the extractor's own output and are
+applied with the editor directly, not re-read through this package's model.
 
 ## `mkvkit.verify` -- prove the difference is the one you declared
 
@@ -250,6 +297,12 @@ The primary evidence is one hash per stream, taken with a stream copy on both
 sides. The expected difference is an argument -- `TracksDropped`,
 `TracksAppended`, `HeaderOnly` -- so the question is not "are these the same?"
 but "is the difference the one that was intended?".
+
+`TracksDropped(default_moved=True)` (`--default-moved`) lets the default flag
+change and then requires exactly one audio track to carry it.
+`TracksDropped(replaced_chapters=...)` (`--chapters DOCUMENT`) holds the new
+file's marks to the document that was written in, instead of to the
+original's, and fails a file that ended up with more than one edition.
 
 Some differences are notes, with their reasons: a modern language subtag
 appearing while the legacy element is unchanged; identifiers the muxer
@@ -284,7 +337,13 @@ catches a plan built on a wrong original language.
 Two flags travel together: a chapter document is always passed with the
 option that suppresses the file's own marks, or the file ends up with both
 sets. And a source with no modern language subtags is muxed with them turned
-off, so a track-dropping operation does not quietly rewrite headers.
+off, so a track-dropping operation does not quietly rewrite headers. Moving
+the default audio track sets the flag on the new default **and clears it on
+every other kept audio track**, so the file never carries two.
+
+`build()` refuses, rather than replaces, anything already at the output path,
+its `.part` file or its chapter document in staging. The part file and the
+chapter document are removed whether the muxer succeeds or fails.
 
 The output is never the input. `plan.expected_delta()` hands the verification
 its own declaration of what changed, so the two cannot drift apart.
@@ -330,7 +389,15 @@ parked  = "/srv/parked"
 keep_languages      = ["eng", "deu"]
 droppable_languages = []          # opt-in, and empty by default
 default_audio       = "eng"
+
+[langid]
+model_dir = "/srv/models"         # the speech model's cache; otherwise the library's own
 ```
+
+`[server].url` is an address only: one carrying a user name or password
+(`http://user:pass@example.com`) is refused, because the address is printed in every
+log line about the server. The token goes through `token_env` or
+`token_command`.
 
 `droppable_languages` is empty by default and that is deliberate: a toolkit
 that removes tracks from somebody's files because a list was left blank has

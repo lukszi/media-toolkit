@@ -152,6 +152,7 @@ class RemuxPlan:
         return TracksDropped(
             dropped=frozenset(self.drop_audio),
             default_moved=self.set_default is not None,
+            replaced_chapters=self.chapters,
         )
 
     def __str__(self) -> str:
@@ -227,6 +228,11 @@ def plan(
         notes.append(
             "the source carries no modern language subtags, so the muxer is told "
             "not to add any"
+        )
+    if chapters is not None and chapters.unkept:
+        problems.append(
+            "chapters: the document has structure the rebuild would not carry: "
+            + "; ".join(chapters.unkept)
         )
     if chapters is not None:
         selfcheck = chapters_xml.selfcheck(
@@ -319,7 +325,12 @@ def command(
     if remux.keep_audio:
         argv += ["--audio-tracks", ",".join(str(i) for i in remux.keep_audio)]
     if remux.set_default is not None:
-        argv += ["--default-track-flag", f"{remux.set_default}:1"]
+        # Setting one flag does not clear the others: the track that was the
+        # default keeps saying so unless it is told otherwise, and a file with
+        # two defaults plays whichever a player meets first.
+        for track_id in remux.keep_audio:
+            flag = 1 if track_id == remux.set_default else 0
+            argv += ["--default-track-flag", f"{track_id}:{flag}"]
     if remux.chapters is not None:
         # The document does not replace the file's own marks, it is added
         # beside them -- so the input's chapters are suppressed here. These two
@@ -359,7 +370,11 @@ def build(
     """Run the plan into its staging path. Dry run by default.
 
     The output is written to a part-file and renamed on success, so an
-    interrupted run never leaves something that looks like a finished rebuild.
+    interrupted run never leaves something that looks like a finished rebuild;
+    the part-file and the chapter document are removed whatever happens. A
+    file already sitting at any of those paths is refused, not replaced: the
+    staging directory is somebody's disk, and a file there with this name may
+    be the only copy of an earlier rebuild.
     """
     if not remux.ok:
         return BuildResult(remux, problems=remux.problems)
@@ -371,30 +386,51 @@ def build(
             notes=("dry run: nothing was written",),
         )
 
-    remux.output.parent.mkdir(parents=True, exist_ok=True)
     part = remux.output.with_suffix(remux.output.suffix + ".part")
-    for stale in (part, remux.output):
-        if stale.exists():
-            stale.unlink()
-    document: Path | None = None
-    if remux.chapters is not None:
-        document = _chapter_document_path(remux, remux.output)
-        document.write_text(
-            chapters_xml.build(remux.chapters), encoding="utf-8", newline="\n"
-        )
-    argv = command(remux, output=part, chapters_document=document)
-    result = run("mkvmerge", argv, ok=_MUX_OK)
-    notes: list[str] = []
-    if result.returncode == 1:
-        notes.append(f"the muxer warned: {result.tail.splitlines()[-1][:200]}")
-    if not part.exists() or part.stat().st_size == 0:
+    document = (
+        _chapter_document_path(remux, remux.output)
+        if remux.chapters is not None
+        else None
+    )
+    occupied = [
+        path for path in (remux.output, part, document)
+        if path is not None and path.exists()
+    ]
+    if occupied:
         return BuildResult(
             remux, command=tuple(argv), applied=False,
-            problems=("the muxer produced nothing",), notes=tuple(notes),
+            problems=tuple(
+                f"{path} already exists and is not replaced; move it away, or "
+                "remove it if it is a leftover nobody needs"
+                for path in occupied
+            ),
         )
-    part.replace(remux.output)
-    if document is not None:
-        document.unlink(missing_ok=True)
+
+    remux.output.parent.mkdir(parents=True, exist_ok=True)
+    argv = command(remux, output=part, chapters_document=document)
+    notes: list[str] = []
+    try:
+        if document is not None and remux.chapters is not None:
+            document.write_text(
+                chapters_xml.build(remux.chapters), encoding="utf-8", newline="\n"
+            )
+        result = run("mkvmerge", argv, ok=_MUX_OK)
+        if result.returncode == 1:
+            lines = result.tail.splitlines()
+            said = lines[-1][:200] if lines else "(it gave no message)"
+            notes.append(f"the muxer warned: {said}")
+        if not part.exists() or part.stat().st_size == 0:
+            return BuildResult(
+                remux, command=tuple(argv), applied=False,
+                problems=("the muxer produced nothing",), notes=tuple(notes),
+            )
+        part.replace(remux.output)
+    finally:
+        # Whatever happened, nothing half-written stays behind to be taken
+        # for a result or to block the next run.
+        part.unlink(missing_ok=True)
+        if document is not None:
+            document.unlink(missing_ok=True)
     return BuildResult(
         remux, command=tuple(argv), applied=True, output=remux.output,
         notes=tuple(notes),

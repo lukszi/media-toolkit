@@ -28,8 +28,10 @@ mkvkit langid   jobs|scan|report            what language is actually spoken
 ```
 
 Everything that writes defaults to a dry run and needs `--apply`. A rebuild is
-staged, verified and swapped in; the file it replaces is parked, never
-deleted. `docs/mkvkit.md` in the repository is the guide.
+staged, verified against its own plan by `remux --apply` itself, and swapped
+in; the file it replaces is parked, never deleted. An applied header edit
+writes its rollback to disk before it touches the file. `docs/mkvkit.md` in
+the repository is the guide.
 
 One thing worth knowing before you use the chapter verbs: a published chapter
 list whose timestamps match your cut proves the **marks** fit and says nothing

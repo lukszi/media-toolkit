@@ -48,9 +48,43 @@ from .config import Config
 from .probe import container_mismatch, describe, probe
 from .propedit import TrackEdit, safe_propedit
 
-__all__ = ["REGISTRARS", "add_write_arguments"]
+__all__ = [
+    "REGISTRARS",
+    "add_force_argument",
+    "add_rollback_argument",
+    "add_write_arguments",
+]
 
 log = logging.getLogger(__name__)
+
+
+def add_rollback_argument(parser: argparse.ArgumentParser) -> None:
+    """``--rollback-dir``: where an applied header edit leaves its way back."""
+    parser.add_argument(
+        "--rollback-dir", type=Path, default=None, metavar="DIR",
+        help="where the rollback (previous values, and the chapter or tag document "
+             "the file had) is written before anything is changed; otherwise "
+             "<[paths].work>/rollback",
+    )
+
+
+def add_force_argument(parser: argparse.ArgumentParser) -> None:
+    """``--force``: the only way an existing ``--out`` file is replaced."""
+    parser.add_argument(
+        "--force", action="store_true",
+        help="replace the --out file if it already exists (otherwise that is refused)",
+    )
+
+
+def _out_refused(out: Path, force: bool) -> bool:
+    """Say so and return True when ``--out`` exists and nobody said ``--force``."""
+    if out.exists() and not force:
+        print(
+            f"{out} already exists and is not replaced; pass --force to replace it, "
+            "or choose another --out"
+        )
+        return True
+    return False
 
 
 def add_write_arguments(parser: argparse.ArgumentParser) -> None:
@@ -112,6 +146,7 @@ def _register_chapters(subparsers: argparse._SubParsersAction) -> None:  # type:
     )
     rollback.add_argument("path", type=Path)
     rollback.add_argument("--out", type=Path, required=True)
+    add_force_argument(rollback)
     rollback.set_defaults(handler=_chapters_rollback)
 
     classify = verbs.add_parser(
@@ -134,6 +169,7 @@ def _register_chapters(subparsers: argparse._SubParsersAction) -> None:  # type:
                        help="the language the names are supposed to be in")
     match.add_argument("--out", type=Path, default=None,
                        help="write the resulting document here")
+    add_force_argument(match)
     match.set_defaults(handler=_chapters_match)
 
     windows = verbs.add_parser(
@@ -165,12 +201,14 @@ def _register_chapters(subparsers: argparse._SubParsersAction) -> None:  # type:
     plan.add_argument("--source", required=True,
                       help="where the names came from; it is written into the file")
     add_write_arguments(plan)
+    add_rollback_argument(plan)
     plan.set_defaults(handler=_chapters_plan)
 
     apply_marks = verbs.add_parser("apply", help="write a document into a file")
     apply_marks.add_argument("path", type=Path)
     apply_marks.add_argument("--document", type=Path, required=True)
     add_write_arguments(apply_marks)
+    add_rollback_argument(apply_marks)
     apply_marks.set_defaults(handler=_chapters_apply)
 
     parser.set_defaults(handler=_no_verb, _parser=parser)
@@ -206,6 +244,14 @@ def _chapters_rollback(args: argparse.Namespace, config: Config) -> int:
     if not chapters:
         print(f"{args.path.name} has no marks; there is nothing to roll back to")
         return 1
+    if chapters.unkept:
+        print(
+            f"{args.path.name}: the marks have structure a rollback document built "
+            f"here would lose ({'; '.join(chapters.unkept)}); not written"
+        )
+        return 1
+    if _out_refused(args.out, args.force):
+        return 1
     args.out.write_text(chapters_xml.rollback(chapters), encoding="utf-8", newline="\n")
     print(f"{len(chapters)} mark(s), names stripped -> {args.out}")
     return 0
@@ -214,7 +260,8 @@ def _chapters_rollback(args: argparse.Namespace, config: Config) -> int:
 def _chapters_apply(args: argparse.Namespace, config: Config) -> int:
     chapters = chapters_xml.parse(args.document.read_text(encoding="utf-8"))
     result = safe_propedit(
-        args.path, chapters=chapters, dry_run=not args.apply, config=config
+        args.path, chapters=chapters, dry_run=not args.apply, config=config,
+        rollback_dir=args.rollback_dir,
     )
     print(result)
     return 0 if result.ok else 1
@@ -303,6 +350,14 @@ def _chapters_match(args: argparse.Namespace, config: Config) -> int:
     if result.shifts is not None:
         print(f"  {result.shifts}")
     if result.accepted and result.chapters is not None and args.out is not None:
+        if result.chapters.unkept:
+            print(
+                "  the file's marks have structure this document would lose "
+                f"({'; '.join(result.chapters.unkept)}); not written"
+            )
+            return 1
+        if _out_refused(args.out, args.force):
+            return 1
         args.out.write_text(
             chapters_xml.build(result.chapters, language=args.language),
             encoding="utf-8", newline="\n",
@@ -357,7 +412,9 @@ def _chapters_plan(args: argparse.Namespace, config: Config) -> int:
     print(plan)
     if plan.blocked:
         return 1
-    outcome = plan_module.apply(plan, dry_run=not args.apply, config=config)
+    outcome = plan_module.apply(
+        plan, dry_run=not args.apply, config=config, rollback_dir=args.rollback_dir
+    )
     print(outcome)
     return 0 if outcome.ok else 1
 
@@ -407,6 +464,7 @@ def _register_propedit(subparsers: argparse._SubParsersAction) -> None:  # type:
         help="rewrite a language tag that would overrule the header",
     )
     add_write_arguments(parser)
+    add_rollback_argument(parser)
     parser.set_defaults(handler=_propedit)
 
 
@@ -421,7 +479,8 @@ def _propedit(args: argparse.Namespace, config: Config) -> int:
             tags_module.read_tags(args.path, config=config), args.track, args.language
         )
     result = safe_propedit(
-        args.path, [edit], tags=tags, dry_run=not args.apply, config=config
+        args.path, [edit], tags=tags, dry_run=not args.apply, config=config,
+        rollback_dir=args.rollback_dir,
     )
     print(result)
     if not args.apply:
@@ -449,7 +508,16 @@ def _register_verify(subparsers: argparse._SubParsersAction) -> None:  # type: i
         "--header-only", action="store_true",
         help="a header edit: the payloads provably did not move, so skip hashing",
     )
-    parser.add_argument("--default-moved", action="store_true")
+    parser.add_argument(
+        "--default-moved", action="store_true",
+        help="the default audio track was moved on purpose; exactly one audio "
+             "track must carry the flag afterwards",
+    )
+    parser.add_argument(
+        "--chapters", type=Path, default=None, metavar="DOCUMENT",
+        help="the chapter document the rebuild wrote in; the new file's marks are "
+             "held to it instead of to the original's",
+    )
     parser.set_defaults(handler=_verify)
 
 
@@ -464,7 +532,10 @@ def _verify(args: argparse.Namespace, config: Config) -> int:
             int(value) for value in args.dropped.split(",") if value.strip()
         )
         delta = verify_module.TracksDropped(
-            dropped=dropped, default_moved=args.default_moved
+            dropped=dropped, default_moved=args.default_moved,
+            replaced_chapters=(
+                _read_document(args.chapters) if args.chapters is not None else None
+            ),
         )
     take_hashes = not args.header_only
     original = verify_module.collect(args.original, hashes=take_hashes, config=config)
@@ -525,14 +596,44 @@ def _remux(args: argparse.Namespace, config: Config) -> int:
         print(f"  note: {note}")
     for problem in result.problems:
         print(f"  problem: {problem}")
-    if result.applied:
-        print(f"  built {result.output}")
+    if not result.applied or result.output is None:
+        return 0 if result.ok else 1
+    print(f"  built {result.output}")
+    # A rebuild is not finished until it has been compared with its source
+    # against the plan, so that comparison is part of the verb rather than a
+    # suggestion printed after it.
+    print(f"  verifying:  {_verify_hint(args.path, result.output, remux, args.chapters)}")
+    original = verify_module.collect(args.path, config=config)
+    built = verify_module.collect(result.output, config=config)
+    comparison = verify_module.compare(original, built, remux.expected_delta())
+    for line in str(comparison).splitlines():
+        print(f"  {line}")
+    if not comparison.ok:
         print(
-            "  now verify it:  mkvkit verify "
-            f"{args.path} {result.output} --dropped "
-            f"{','.join(str(i) for i in remux.drop_audio)}"
+            f"  the rebuild at {result.output} did not verify; it stays in staging "
+            "and must not be swapped in"
         )
+        return 1
     return 0 if result.ok else 1
+
+
+def _verify_hint(
+    source: Path, output: Path, remux: remux_module.RemuxPlan, chapters: Path | None
+) -> str:
+    """The stand-alone command that repeats the verification a remux just ran."""
+    parts = ["mkvkit", "verify", _quoted(source), _quoted(output)]
+    if remux.drop_audio:
+        parts += ["--dropped", ",".join(str(i) for i in remux.drop_audio)]
+    if remux.set_default is not None:
+        parts.append("--default-moved")
+    if chapters is not None:
+        parts += ["--chapters", _quoted(chapters)]
+    return " ".join(parts)
+
+
+def _quoted(path: Path) -> str:
+    text = str(path)
+    return f'"{text}"' if any(c in text for c in " ()'&") else text
 
 
 # ------------------------------------------------------------------------- swap

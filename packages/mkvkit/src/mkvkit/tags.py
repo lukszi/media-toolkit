@@ -91,15 +91,43 @@ class TagError(ValueError):
 
 @dataclass(frozen=True)
 class SimpleTag:
-    """One name and value. The language elements are the editor's business."""
+    """One name and value, with everything else the element can carry.
+
+    A simple tag can hold a binary value instead of a string, can say which
+    language its value is in (two ways) and whether that is the default, and
+    can hold simple tags of its own. None of that is ever written by this
+    package, but all of it is read and written back: a tag document is
+    replaced whole, so anything a read drops is deleted from the file by the
+    next write.
+    """
 
     name: str
     value: str = ""
     language: str | None = None
+    language_ietf: str | None = None
+    #: The element's "this is the default language" flag, as written ("0"/"1").
+    default: str | None = None
+    #: A binary value, exactly as the extractor printed it, and its format.
+    binary: str | None = None
+    binary_format: str | None = None
+    children: tuple[SimpleTag, ...] = ()
 
     @property
     def is_language(self) -> bool:
         return self.name.upper() == LANGUAGE_TAG
+
+    def flat(self, prefix: str = "") -> Iterable[tuple[str, str]]:
+        """``(path, value)`` for this tag and every tag nested under it.
+
+        A nested tag is named by its path (``ARTIST/SORT_WITH``), so a nested
+        tag that came back flattened reads as a different tag, and a binary
+        value is compared by its text, so one that came back empty is a loss.
+        """
+        path = f"{prefix}{self.name.upper()}"
+        value = self.value if self.binary is None else f"binary:{self.binary}"
+        yield path, value
+        for child in self.children:
+            yield from child.flat(f"{path}/")
 
 
 @dataclass(frozen=True)
@@ -152,6 +180,9 @@ class TagSet:
     """Every tag in one file, in document order."""
 
     tags: tuple[Tag, ...] = ()
+    #: Elements the reader met and this model does not carry. :func:`build`
+    #: refuses such a set, because writing it back would delete them.
+    unkept: tuple[str, ...] = ()
 
     def __len__(self) -> int:
         return len(self.tags)
@@ -167,9 +198,10 @@ class TagSet:
         reports the editor's own normalisation as a change.
         """
         out = [
-            (tag.targets.key, simple.name.upper(), simple.value)
+            (tag.targets.key, name, value)
             for tag in self.tags
             for simple in tag.simples
+            for name, value in simple.flat()
         ]
         return tuple(sorted(out))
 
@@ -206,7 +238,31 @@ def parse(text: str | None) -> TagSet:
         root = ET.fromstring((text or "").lstrip("﻿"))
     except ET.ParseError as exc:
         raise TagError(f"the tag document does not parse: {exc}") from exc
-    return TagSet(tuple(_tag(element) for element in root.findall("Tag")))
+    return TagSet(
+        tuple(_tag(element) for element in root.findall("Tag")),
+        unkept=tuple(sorted(set(_unknown_elements(root)))),
+    )
+
+
+#: Every element this module reads, by the element it may appear in.
+_KNOWN_CHILDREN: Final[dict[str, frozenset[str]]] = {
+    "Tags": frozenset({"Tag"}),
+    "Tag": frozenset({"Targets", "Simple"}),
+    "Targets": frozenset({"TargetTypeValue", "TargetType", *_TARGET_FIELDS}),
+    "Simple": frozenset(
+        {"Name", "String", "Binary", "TagLanguage", "TagLanguageIETF",
+         "DefaultLanguage", "Simple"}
+    ),
+}
+
+
+def _unknown_elements(element: ET.Element) -> Iterable[str]:
+    known = _KNOWN_CHILDREN.get(element.tag, frozenset())
+    for child in element:
+        if child.tag not in known:
+            yield f"{element.tag}/{child.tag}"
+        else:
+            yield from _unknown_elements(child)
 
 
 def _tag(element: ET.Element) -> Tag:
@@ -233,17 +289,28 @@ def _tag(element: ET.Element) -> Tag:
         type_value=type_value,
         type=target_type,
     )
-    # Simple elements nest. A flat view is what every comparison here wants,
-    # and nothing this package writes nests.
-    simples = tuple(
-        SimpleTag(
-            name=(simple.findtext("Name") or "").strip(),
-            value=(simple.findtext("String") or "").strip(),
-            language=(simple.findtext("TagLanguage") or "").strip() or None,
-        )
-        for simple in element.iter("Simple")
-    )
+    # Simple elements nest, and the nesting is kept: the document is written
+    # back whole, so a flattened read would flatten the file.
+    simples = tuple(_simple(simple) for simple in element.findall("Simple"))
     return Tag(targets=targets, simples=simples)
+
+
+def _simple(element: ET.Element) -> SimpleTag:
+    binary = element.find("Binary")
+    return SimpleTag(
+        name=(element.findtext("Name") or "").strip(),
+        value=(element.findtext("String") or "").strip(),
+        language=_text(element, "TagLanguage"),
+        language_ietf=_text(element, "TagLanguageIETF"),
+        default=_text(element, "DefaultLanguage"),
+        binary=None if binary is None else (binary.text or "").strip(),
+        binary_format=None if binary is None else binary.get("format"),
+        children=tuple(_simple(child) for child in element.findall("Simple")),
+    )
+
+
+def _text(element: ET.Element, name: str) -> str | None:
+    return (element.findtext(name) or "").strip() or None
 
 
 def _int(text: str | None) -> int | None:
@@ -266,6 +333,12 @@ def read_tags(
 def build(tags: TagSet | Iterable[Tag]) -> str:
     """The document to hand the editor. Always built from everything, never a part."""
     tag_set = tags if isinstance(tags, TagSet) else TagSet(tuple(tags))
+    if tag_set.unkept:
+        raise TagError(
+            "the tag document holds element(s) this module does not carry ("
+            + ", ".join(tag_set.unkept)
+            + "); writing it back would delete them, so it is not written"
+        )
     root = ET.Element("Tags")
     for tag in tag_set.tags:
         element = ET.SubElement(root, "Tag")
@@ -278,13 +351,29 @@ def build(tags: TagSet | Iterable[Tag]) -> str:
             for uid in getattr(tag.targets, field_name):
                 ET.SubElement(block, element_name).text = str(uid)
         for simple in tag.simples:
-            node = ET.SubElement(element, "Simple")
-            ET.SubElement(node, "Name").text = simple.name
-            ET.SubElement(node, "String").text = simple.value
-            if simple.language:
-                ET.SubElement(node, "TagLanguage").text = simple.language
+            _build_simple(element, simple)
     ET.indent(root, space="  ")
     return _HEADER + ET.tostring(root, encoding="unicode") + "\n"
+
+
+def _build_simple(parent: ET.Element, simple: SimpleTag) -> None:
+    node = ET.SubElement(parent, "Simple")
+    ET.SubElement(node, "Name").text = simple.name
+    if simple.binary is not None:
+        binary = ET.SubElement(node, "Binary")
+        binary.text = simple.binary
+        if simple.binary_format:
+            binary.set("format", simple.binary_format)
+    else:
+        ET.SubElement(node, "String").text = simple.value
+    if simple.language:
+        ET.SubElement(node, "TagLanguage").text = simple.language
+    if simple.language_ietf:
+        ET.SubElement(node, "TagLanguageIETF").text = simple.language_ietf
+    if simple.default is not None:
+        ET.SubElement(node, "DefaultLanguage").text = simple.default
+    for child in simple.children:
+        _build_simple(node, child)
 
 
 def set_track_language(tags: TagSet, uid: int, language: str) -> TagSet:
@@ -305,7 +394,7 @@ def set_track_language(tags: TagSet, uid: int, language: str) -> TagSet:
             for simple in tag.simples
         )
         changed.append(replace(tag, simples=simples))
-    return TagSet(tuple(changed))
+    return TagSet(tuple(changed), unkept=tags.unkept)
 
 
 def provenance(
@@ -355,4 +444,4 @@ def merge(existing: TagSet, additions: Sequence[Tag]) -> TagSet:
         )
         if simples:
             kept.append(replace(tag, simples=simples))
-    return TagSet((*kept, *additions))
+    return TagSet((*kept, *additions), unkept=existing.unkept)

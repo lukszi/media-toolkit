@@ -187,7 +187,14 @@ def swap(
             keeper, problems=(f"the copy failed and the original is back: {exc}",)
         )
 
-    found = verify(keeper)
+    try:
+        found = verify(keeper)
+    except BaseException:
+        # A check that cannot finish -- the prober failed, or somebody pressed
+        # Ctrl-C -- has not verified anything, so the arrived file must not
+        # stay live. The original goes back before the error travels on.
+        _restore(destination, keeper)
+        raise
     if found:
         _restore(destination, keeper)
         return SwapResult(

@@ -171,6 +171,20 @@ class ExpectedDelta:
     def payload_may_change(self) -> bool:
         return False
 
+    @property
+    def one_default_audio(self) -> bool:
+        """Whether the new file must carry exactly one default audio track."""
+        return False
+
+    @property
+    def chapters(self) -> chapters_xml.ChapterSet | None:
+        """The marks the new file must carry, when they were replaced on purpose.
+
+        None means the marks were not touched and are compared with the
+        original's.
+        """
+        return None
+
 
 @dataclass(frozen=True, kw_only=True)
 class TracksDropped(ExpectedDelta):
@@ -178,6 +192,8 @@ class TracksDropped(ExpectedDelta):
 
     dropped: frozenset[int] = frozenset()
     default_moved: bool = False
+    #: A chapter document written in by the same rebuild, if there was one.
+    replaced_chapters: chapters_xml.ChapterSet | None = None
     label: str = "tracks dropped"
 
     def kept(self, original: Evidence) -> tuple[int, ...]:
@@ -190,6 +206,17 @@ class TracksDropped(ExpectedDelta):
     @property
     def may_change(self) -> frozenset[str]:
         return frozenset({"default"}) if self.default_moved else frozenset()
+
+    @property
+    def one_default_audio(self) -> bool:
+        # Moving the default is only half an edit if the old default keeps its
+        # flag too: a player then picks whichever it meets first. So a moved
+        # default is allowed to change the flag, and required to leave one.
+        return self.default_moved
+
+    @property
+    def chapters(self) -> chapters_xml.ChapterSet | None:
+        return self.replaced_chapters
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -382,9 +409,11 @@ def compare(
     kept = expectation.kept(original)
     hashed = _compare_hashes(original, built, kept, expectation, problems, notes)
     _compare_tracks(original, built, kept, expectation, problems, notes)
+    if expectation.one_default_audio:
+        _compare_default_audio(built, problems)
     _compare_streams(original, built, kept, expectation, problems, notes)
     _compare_container(original, built, hashed > 0, problems, notes)
-    _compare_chapters(original, built, problems, notes)
+    _compare_chapters(original, built, expectation.chapters, problems, notes)
     _compare_tags(original, built, _identifier_map(original, built, kept), problems, notes)
     return Comparison(
         problems=tuple(problems),
@@ -509,6 +538,16 @@ def _compare_tracks(
         )
 
 
+def _compare_default_audio(built: Evidence, problems: list[str]) -> None:
+    """After a moved default, exactly one audio track may carry the flag."""
+    flagged = [track.id for track in built.probe.audio if track.default]
+    if len(flagged) != 1:
+        problems.append(
+            f"the default was moved and {len(flagged)} audio track(s) carry the "
+            f"default flag {flagged}; exactly one should"
+        )
+
+
 def _compare_streams(
     original: Evidence,
     built: Evidence,
@@ -589,10 +628,19 @@ def _compare_container(
 
 
 def _compare_chapters(
-    original: Evidence, built: Evidence, problems: list[str], notes: list[str]
+    original: Evidence,
+    built: Evidence,
+    replaced: chapters_xml.ChapterSet | None,
+    problems: list[str],
+    notes: list[str],
 ) -> None:
-    """Count, start within a millisecond, and the name. Never the raw document."""
-    old, new = original.chapters, built.chapters
+    """Count, start within a millisecond, and the name. Never the raw document.
+
+    When the marks were replaced on purpose, the new file is held to the
+    document that was written in rather than to the marks it replaced.
+    """
+    old = replaced if replaced is not None else original.chapters
+    new = built.chapters
     if len(old) != len(new):
         problems.append(f"{len(old)} chapter mark(s) became {len(new)}")
         return
@@ -607,7 +655,13 @@ def _compare_chapters(
             problems.append(
                 f"chapter {position}: name {before.name!r} -> {after.name!r}"
             )
-    if old and original.probe.edition_count != built.probe.edition_count:
+    if replaced is not None:
+        if built.probe.edition_count > 1:
+            problems.append(
+                f"the new file has {built.probe.edition_count} chapter editions; "
+                "the document was added beside the old marks instead of replacing them"
+            )
+    elif old and original.probe.edition_count != built.probe.edition_count:
         notes.append(
             f"the chapter edition count changed "
             f"{original.probe.edition_count} -> {built.probe.edition_count}"

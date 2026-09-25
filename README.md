@@ -26,7 +26,7 @@ pip install "dubalign[align]"     # changepoint detection and resampling
 Python 3.11 or newer. The external programs (ffmpeg, ffprobe, and the
 MKVToolNix command-line tools) are discovered at run time and never vendored;
 speech-model weights are never vendored either -- the model name and its cache
-directory are configuration.
+directory are configuration (`[langid].model`, `[langid].model_dir`).
 
 From a checkout:
 

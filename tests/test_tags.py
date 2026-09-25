@@ -221,6 +221,79 @@ def test_a_targeted_provenance_tag_does_not_disturb_the_global_one() -> None:
     assert (str(TRACK_UID), "LANGUAGE_SOURCE", "a detector") in after.triples
 
 
+RICH = f"""<?xml version="1.0"?>
+<Tags>
+  <Tag>
+    <Targets><TrackUID>{TRACK_UID}</TrackUID></Targets>
+    <Simple>
+      <Name>ARTIST</Name>
+      <String>A. Example</String>
+      <TagLanguage>eng</TagLanguage>
+      <TagLanguageIETF>en-GB</TagLanguageIETF>
+      <DefaultLanguage>0</DefaultLanguage>
+      <Simple>
+        <Name>SORT_WITH</Name>
+        <String>Example, A.</String>
+      </Simple>
+    </Simple>
+    <Simple>
+      <Name>COVER_HASH</Name>
+      <Binary format="hex">0a0b0c</Binary>
+    </Simple>
+  </Tag>
+</Tags>
+"""
+
+
+def test_a_round_trip_keeps_nesting_binary_values_and_the_language_fields() -> None:
+    """The document is written back whole: whatever a read drops, a write deletes."""
+    read = parse(RICH)
+    again = parse(build(read))
+    assert again == read
+    artist = read.tags[0].simples[0]
+    assert artist.language_ietf == "en-GB"
+    assert artist.default == "0"
+    assert [child.name for child in artist.children] == ["SORT_WITH"]
+    blob = read.tags[0].simples[1]
+    assert (blob.binary, blob.binary_format) == ("0a0b0c", "hex")
+    written = build(read)
+    assert '<Binary format="hex">0a0b0c</Binary>' in written
+    assert "<TagLanguageIETF>en-GB</TagLanguageIETF>" in written
+
+
+def test_the_comparison_sees_a_nested_tag_that_came_back_flattened() -> None:
+    read = parse(RICH)
+    artist = read.tags[0].simples[0]
+    flattened = TagSet(
+        (Tag(read.tags[0].targets,
+             (SimpleTag(artist.name, artist.value), *artist.children,
+              read.tags[0].simples[1])),)
+    )
+    assert flattened.triples != read.triples
+    assert (str(TRACK_UID), "ARTIST/SORT_WITH", "Example, A.") in read.triples
+
+
+def test_the_comparison_sees_a_binary_value_that_came_back_empty() -> None:
+    read = parse(RICH)
+    emptied = parse(RICH.replace("0a0b0c", ""))
+    assert emptied.triples != read.triples
+
+
+def test_a_document_with_elements_this_does_not_carry_is_never_written() -> None:
+    odd = RICH.replace(
+        "<Name>COVER_HASH</Name>", "<Name>COVER_HASH</Name><Something>x</Something>"
+    )
+    read = parse(odd)
+    assert read.unkept == ("Simple/Something",)
+    with pytest.raises(TagError, match="Simple/Something"):
+        build(read)
+    # merging or rewriting a language does not launder it
+    with pytest.raises(TagError):
+        build(merge(read, [provenance("chapter names", "an example source")]))
+    with pytest.raises(TagError):
+        build(set_track_language(read, TRACK_UID, "deu"))
+
+
 def test_a_tag_set_can_be_built_by_hand() -> None:
     tags = TagSet(
         (

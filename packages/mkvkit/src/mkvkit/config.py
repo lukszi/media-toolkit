@@ -41,6 +41,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
+from urllib.parse import urlsplit
 
 #: Anything that turns a command line into its output. Injected in tests, so
 #: no test ever runs a password manager.
@@ -175,6 +176,9 @@ class LangidConfig:
     device: str = "auto"
     min_conf: float = 0.92
     override_conf: float = 0.97
+    #: Where the speech model's files are cached. None is the library's own
+    #: default cache.
+    model_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -385,6 +389,14 @@ def _server(reader: _Reader) -> ServerConfig:
     url = reader.string("server", data, "url") or ServerConfig.url
     if not url.startswith(("http://", "https://")):
         reader.problems.append("server.url must start with http:// or https://")
+    elif "@" in urlsplit(url).netloc:
+        # A credential in the address would be printed wherever the address
+        # is, which is every log line about the server. The message does not
+        # repeat the address, for the same reason.
+        reader.problems.append(
+            "server.url must not carry a user name or password (user:pass@host); "
+            "give the address alone and the token through token_env or token_command"
+        )
     token_env = reader.string("server", data, "token_env")
     token_command = reader.string("server", data, "token_command")
     if token_env and token_command:
@@ -441,7 +453,7 @@ def _policy(reader: _Reader) -> PolicyConfig:
 
 
 def _langid(reader: _Reader) -> LangidConfig:
-    keys = ("model", "device", "min_conf", "override_conf")
+    keys = ("model", "device", "min_conf", "override_conf", "model_dir")
     data = reader.section("langid", keys)
     model = reader.string("langid", data, "model") or LangidConfig.model
     device = reader.string("langid", data, "device") or LangidConfig.device
@@ -459,7 +471,10 @@ def _langid(reader: _Reader) -> LangidConfig:
             "langid.override_conf must be at least min_conf: overturning an existing "
             "tag is held to a higher bar than confirming one"
         )
-    return LangidConfig(model, device, min_conf, override_conf)
+    return LangidConfig(
+        model, device, min_conf, override_conf,
+        model_dir=reader.path("langid", data, "model_dir"),
+    )
 
 
 def _jobs(reader: _Reader) -> JobsConfig:
