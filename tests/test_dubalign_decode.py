@@ -178,6 +178,121 @@ def test_a_stream_with_no_readable_packet_is_an_error_not_a_zero() -> None:
         first_packet_time("x.mkv", 0, runner=runner_returning("\n"))
 
 
+# ------------------------------------------------------------ dump reuse
+def writing_runner(calls: list[list[str]], fill: bytes = b"x" * 64) -> Any:
+    """Stands in for the decoder: writes each output it was asked for."""
+
+    def run(tool: str, args: Any, *, ok: Any = (0,)) -> Result:
+        argv = [str(a) for a in args]
+        calls.append(argv)
+        for i, arg in enumerate(argv):
+            if arg == "-y":
+                Path(argv[i + 1]).write_bytes(fill)
+        return Result(tool=tool, argv=(tool,), returncode=0, stdout="", stderr="")
+
+    return run
+
+
+def fake_decode(source: Path, work: Path, calls: list[list[str]], **kwargs: Any) -> Any:
+    probed = source_from_json(source, PROBED)
+    kwargs.setdefault("name", "other")
+    return decode(source, out_dir=work, probed=probed,
+                  runner=writing_runner(calls), **kwargs)
+
+
+def media(tmp_path: Path, name: str, content: bytes = b"container") -> Path:
+    path = tmp_path / "media" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+def test_the_same_source_reuses_its_dump(tmp_path: Path) -> None:
+    source, calls = media(tmp_path, "donor.mkv"), []
+    first = fake_decode(source, tmp_path / "work", calls)
+    again = fake_decode(source, tmp_path / "work", calls)
+    assert len(calls) == 1
+    assert again.full_path == first.full_path
+
+
+def test_a_different_source_under_the_same_name_gets_its_own_dump(tmp_path: Path) -> None:
+    """The stale-dump trap: a second film in the same work directory."""
+    calls: list[list[str]] = []
+    first = fake_decode(media(tmp_path, "donor.mkv"), tmp_path / "work", calls)
+    second = fake_decode(media(tmp_path, "result.mkv"), tmp_path / "work", calls)
+    assert len(calls) == 2, "the second source was answered from the first one's dump"
+    assert second.full_path != first.full_path
+    assert second.analysis_path != first.analysis_path
+
+
+def test_a_different_track_gets_its_own_dump(tmp_path: Path) -> None:
+    source, calls = media(tmp_path, "donor.mkv"), []
+    first = fake_decode(source, tmp_path / "work", calls, audio_index=0, channels=2)
+    other = fake_decode(source, tmp_path / "work", calls, audio_index=2, channels=2)
+    assert len(calls) == 2
+    assert other.full_path != first.full_path
+
+
+def test_a_changed_file_is_decoded_again(tmp_path: Path) -> None:
+    import os
+
+    source, calls = media(tmp_path, "donor.mkv"), []
+    first = fake_decode(source, tmp_path / "work", calls)
+    stamp = source.stat().st_mtime_ns
+    os.utime(source, ns=(stamp + 10**9, stamp + 10**9))
+    touched = fake_decode(source, tmp_path / "work", calls)
+    assert len(calls) == 2, "a newer file was answered from the older dump"
+    assert touched.full_path != first.full_path
+    source.write_bytes(b"a re-muxed container, longer than before")
+    os.utime(source, ns=(stamp + 10**9, stamp + 10**9))
+    resized = fake_decode(source, tmp_path / "work", calls)
+    assert len(calls) == 3, "a file of another size was answered from the old dump"
+    assert resized.full_path not in (first.full_path, touched.full_path)
+
+
+def test_a_dump_is_written_under_a_part_name_and_renamed(tmp_path: Path) -> None:
+    source, calls = media(tmp_path, "donor.mkv"), []
+    decoded = fake_decode(source, tmp_path / "work", calls)
+    written = [argv[i + 1] for argv in calls for i, a in enumerate(argv) if a == "-y"]
+    assert all(path.endswith(".part") for path in written)
+    assert decoded.full_path.exists() and decoded.analysis_path.exists()
+    assert list((tmp_path / "work").glob("*.part")) == []
+
+
+def test_a_leftover_part_is_never_taken_for_a_dump(tmp_path: Path) -> None:
+    source, calls = media(tmp_path, "donor.mkv"), []
+    decoded = fake_decode(source, tmp_path / "work", calls)
+    # As an interrupted run would leave it: no finished dump, a truncated part.
+    decoded.full_path.unlink()
+    decoded.analysis_path.unlink()
+    part = decoded.full_path.with_name(decoded.full_path.name + ".part")
+    part.write_bytes(b"ab")
+    again = fake_decode(source, tmp_path / "work", calls)
+    assert len(calls) == 2, "the truncated part was accepted"
+    assert again.full_path.read_bytes() == b"x" * 64
+    assert not part.exists()
+
+
+def test_an_interrupted_decode_leaves_nothing_a_later_run_would_trust(
+    tmp_path: Path,
+) -> None:
+    source = media(tmp_path, "donor.mkv")
+    work = tmp_path / "work"
+
+    def interrupted(tool: str, args: Any, *, ok: Any = (0,)) -> Result:
+        argv = [str(a) for a in args]
+        Path(argv[argv.index("-y") + 1]).write_bytes(b"z")
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        decode(source, out_dir=work, name="other",
+               probed=source_from_json(source, PROBED), runner=interrupted)
+    assert list(work.iterdir()) == []
+    calls: list[list[str]] = []
+    fake_decode(source, work, calls)
+    assert len(calls) == 1
+
+
 # ------------------------------------------------------------- the raw check
 def noise(seconds: float, sr: int = SR, seed: int = 7) -> np.ndarray:
     rng = np.random.default_rng(seed)

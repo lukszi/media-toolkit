@@ -3,6 +3,38 @@
 This file records what changed and why it is safe to install. Dates are the
 day the work was done.
 
+## Unreleased
+
+### Fixed
+
+- **A decode dump is only reused for the source it was made from.** Dumps were
+  named by a fixed stem, the rate and the channel count, so a second programme,
+  a different `--other-stream`, or the file being verified in the same `--work`
+  directory was answered from an earlier file's samples. A dump's name now
+  carries a fingerprint of the resolved path, the track, the file's size and
+  modification time and every decode option. Dumps are written under a `.part`
+  name and renamed into place only when the decode has finished, so an
+  interrupted decode is never taken for a whole one. `dubalign verify` always
+  decodes afresh. Dumps left by earlier versions are no longer found and can
+  be deleted.
+- **`dubalign encode --apply` no longer deletes its own input.** The scratch
+  dump was named after the output, in the same directory, so built samples
+  sharing a stem with the output were overwritten and then removed. The scratch
+  dump now has a unique name of its own and is the only file removed.
+- **A join is never placed past the end of the signal.** A span beyond the end
+  scored as the quietest place of all. Only spans that lie wholly inside the
+  signal are candidates, a jump past the end is clamped to it, and among
+  equally quiet spans (digital silence) the one nearest the jump is chosen
+  rather than the earliest.
+- **The printed rate ratio is the one the plan uses.** `RateFit.rate_ratio` and
+  the change-point segments' `rate_ratio` printed the reciprocal of the value
+  written into a plan. Both are now `1 + slope`, the read ratio the splice uses,
+  and `RateFit.speed_ratio` gives the reciprocal under its own name.
+- **`epk_align.absolute_lag` no longer writes beside the source.** Its excerpt
+  and dumps go into a private temporary directory (inside `work_dir` when one is
+  given) that is removed before it returns.
+- **The README's job ends by verifying a file the job creates.**
+
 ## 0.1.0 -- 2026-09-23
 
 The first release. Align an audio track from one transfer of a programme onto

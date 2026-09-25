@@ -90,7 +90,8 @@ class Segment:
 
     @property
     def rate_ratio(self) -> float:
-        return 1.0 / (1.0 + self.slope)
+        """The read ratio a plan uses for this stretch: ``1 + slope``."""
+        return 1.0 + self.slope
 
     @property
     def drifts(self) -> bool:

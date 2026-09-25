@@ -163,7 +163,66 @@ def test_an_apply_runs_the_program_once_and_cleans_up_after_itself(
         runner=recording_runner(calls), work_dir=tmp_path,
     )
     assert len(calls) == 1 and calls[0][0] == "ffmpeg"
-    assert not (tmp_path / "out.f32le").exists(), "the scratch dump is not left behind"
+    assert list(tmp_path.glob("*.f32le")) == [], "the scratch dump is not left behind"
+
+
+def test_an_apply_never_deletes_the_samples_it_was_given(tmp_path: Path) -> None:
+    """Built samples and output sharing a stem once meant the input was lost.
+
+    The scratch dump was named after the output, in the same directory, so it
+    overwrote ``built.f32le`` and then removed it.
+    """
+    samples = tmp_path / "built.f32le"
+    block = np.arange(200, dtype=np.float32).reshape(-1, 2)
+    block.tofile(samples)
+    before = samples.read_bytes()
+    calls: list[list[str]] = []
+    written = encode(
+        np.fromfile(samples, dtype=np.float32).reshape(-1, 2), tmp_path / "built.flac",
+        encoding="flac", dry_run=False, runner=recording_runner(calls),
+    )
+    assert samples.exists(), "the input was deleted"
+    assert samples.read_bytes() == before, "the input was overwritten"
+    scratch = calls[0][calls[0].index("-i") + 1]
+    assert Path(scratch) != samples
+    assert not Path(scratch).exists()
+    assert str(samples) not in written.command
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["built.f32le"]
+
+
+def test_a_failed_encode_leaves_the_input_and_no_scratch(tmp_path: Path) -> None:
+    samples = tmp_path / "built.f32le"
+    np.zeros((50, 2), dtype=np.float32).tofile(samples)
+
+    def failing(tool: str, args: Any, *, ok: Any = (0,)) -> Result:
+        raise RuntimeError("the encoder stopped")
+
+    with pytest.raises(RuntimeError):
+        encode(np.zeros((50, 2)), tmp_path / "built.flac", dry_run=False, runner=failing)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["built.f32le"]
+
+
+def test_verify_never_reuses_a_dump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A verification that read an old dump would pass for a file it never saw."""
+    import dubalign.cli as cli
+
+    seen: list[dict[str, Any]] = []
+
+    class Stop(Exception):
+        pass
+
+    def recording_decode(source: Any, **kwargs: Any) -> Any:
+        seen.append({"source": source, **kwargs})
+        if len(seen) == 2:
+            raise Stop
+        return None
+
+    monkeypatch.setattr(cli, "decode", recording_decode)
+    with pytest.raises(Stop):
+        main(["verify", "keeper.mkv", "track.flac", "--work", str(tmp_path)])
+    assert [call["reuse"] for call in seen] == [False, False]
 
 
 def test_an_encoding_nobody_offers_is_refused_by_name() -> None:

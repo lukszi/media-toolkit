@@ -38,8 +38,15 @@ dubalign plan keeper.mkv donor.mkv --work ./work --out plan.toml --apply
 # build it, write it, and prove it
 dubalign splice plan.toml donor.mkv --out built.f32le --apply
 dubalign encode built.f32le --out track.flac --channels 6 --apply
-dubalign verify keeper.mkv result.mkv --other-stream 1
+dubalign verify keeper.mkv track.flac --work ./work
 ```
+
+The decoded samples in `--work` are reused from one verb to the next, but only
+for the same file: a dump's name carries a fingerprint of the source (its path,
+track, size, modification time and the decode options), so a second programme
+or a different `--other-stream` in the same directory gets dumps of its own. A
+decode that is interrupted leaves no dump behind, and `verify` always decodes
+afresh, because it exists to measure the file as it is now.
 
 Reading is free. Every verb that writes takes `--dry-run`, which is the
 default, or `--apply`, and there is no third state. The exit code carries the

@@ -115,9 +115,11 @@ class RateFit:
     """A straight line through a stretch of the lag curve.
 
     ``slope`` is seconds of lag gained per second of programme. ``rate_ratio``
-    is what that slope means as a speed difference: the other source runs this
-    many times faster than the reference, so reading it back at that ratio is
-    the correction.
+    is what that slope means for a build: how many samples of the other source
+    are read per sample of the reference timeline, ``1 + slope`` -- the same
+    number a plan writes into its segment, so what is printed here is what the
+    splice will use. Its reciprocal, ``speed_ratio``, is how many times faster
+    the other source runs.
     """
 
     slope: float
@@ -130,8 +132,13 @@ class RateFit:
 
     @property
     def rate_ratio(self) -> float:
-        """The speed ratio the slope implies. One means no drift."""
-        return 1.0 / (1.0 + self.slope)
+        """The read ratio a plan uses for this stretch. One means no drift."""
+        return 1.0 + self.slope
+
+    @property
+    def speed_ratio(self) -> float:
+        """How many times faster the other source runs: ``1 / rate_ratio``."""
+        return 1.0 / self.rate_ratio
 
     @property
     def drift_ms_per_s(self) -> float:
@@ -147,8 +154,8 @@ class RateFit:
     def describe(self) -> str:
         return (
             f"{self.t0:.1f}-{self.t1:.1f} s: {self.drift_ms_per_s:+.3f} ms/s "
-            f"({self.total_ms():+.1f} ms across the stretch), rate ratio "
-            f"{self.rate_ratio:.7f}, residual {self.residual_rms_ms:.2f} ms rms / "
+            f"({self.total_ms():+.1f} ms across the stretch), plan rate "
+            f"ratio {self.rate_ratio:.7f}, residual {self.residual_rms_ms:.2f} ms rms / "
             f"{self.residual_max_ms:.2f} ms worst, n={self.n}"
         )
 

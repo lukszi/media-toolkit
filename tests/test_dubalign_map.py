@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from dubalign.align import ANALYSIS_RATE, FULL_RATE
 from dubalign.densemap import LagPoint, LagSeries, dense_map
-from dubalign.drift import drift, fit_rate
+from dubalign.drift import RateFit, drift, fit_rate
 from dubalign.lag48k import sample_exact_lag
 
 from tests.synthetic import SyntheticPair, interleave, noise, programme, synthetic_pair
@@ -129,7 +129,8 @@ def test_the_drift_measurement_resolves_the_slope(pair: SyntheticPair) -> None:
     assert len(series) >= 15
     fit = fit_rate(series)
     assert fit.slope == pytest.approx(pair.slope, abs=1e-5)
-    assert fit.rate_ratio == pytest.approx(pair.rate_after, abs=1e-5)
+    assert fit.rate_ratio == pytest.approx(1.0 / pair.rate_after, abs=1e-5)
+    assert fit.speed_ratio == pytest.approx(pair.rate_after, abs=1e-5)
     assert fit.residual_max_ms < 2.0
 
 
@@ -221,3 +222,27 @@ def test_a_silent_stretch_is_skipped_in_every_channel() -> None:
     assert result.describe() == "nothing was measured"
     with pytest.raises(ValueError, match="nothing was measured"):
         result.median()
+
+
+def test_the_printed_rate_ratio_is_the_one_the_plan_uses() -> None:
+    """A slope of -0.5 ms/s is read back at 0.9995, and that is what is printed.
+
+    The printout used to show the reciprocal, 1.0005, while the plan wrote
+    0.9995 -- two numbers for one stretch, one of them not the one built from.
+    """
+    from dubalign.changepoints import Segment as ModelSegment
+    from dubalign.changepoints import Segmentation
+    from dubalign.plan import plan_from_measurements
+
+    fit = RateFit(slope=-5e-4, intercept=0.09, residual_rms_ms=0.1,
+                  residual_max_ms=0.2, n=20, t0=0.0, t1=100.0)
+    assert fit.rate_ratio == pytest.approx(0.9995)
+    assert f"{fit.rate_ratio:.7f}" in fit.describe()
+    assert "1.0005" not in fit.describe()
+    stretch = ModelSegment(t0=0.0, t1=100.0, slope=fit.slope, intercept=fit.intercept,
+                           n=20, residual_rms_ms=0.1)
+    plan = plan_from_measurements(
+        Segmentation(segments=(stretch,), changepoints=(), penalty=1e-7, noise_ms=0.3),
+        total_frames=FULL_RATE * 100, quiet_search=False,
+    )
+    assert plan.segments[0].rate_ratio == fit.rate_ratio == stretch.rate_ratio

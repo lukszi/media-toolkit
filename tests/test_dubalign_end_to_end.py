@@ -106,7 +106,7 @@ def test_the_jump_is_found_where_it_was_put(measured: SplicePlan) -> None:
 def test_the_rate_difference_is_in_the_model(measured: SplicePlan) -> None:
     head, tail = measured.segments
     assert not head.drifts
-    assert tail.rate_ratio == pytest.approx(RATE_AFTER, rel=0.05)
+    assert tail.rate_ratio == pytest.approx(1.0 / RATE_AFTER, rel=0.05)
     assert head.offset_samples == pytest.approx(HEAD_LAG_S * 48_000, abs=200)
 
 

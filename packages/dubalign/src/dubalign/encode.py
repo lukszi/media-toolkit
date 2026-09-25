@@ -27,6 +27,8 @@ why they could only ever build the one programme they were written for.
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -170,20 +172,40 @@ def encode(
     trim = ENCODER_DELAY_SAMPLES.get(encoding, 0) if compensate_delay else 0
     target = Path(out)
     work = Path(work_dir) if work_dir is not None else target.parent
-    raw = work / f"{target.stem}.f32le"
-    command = encode_command(
-        raw, target, chosen, sample_rate=sample_rate, channels=channels,
-        layout=layout, language=language, title=title, trim_samples=trim,
-    )
+
+    def command_for(raw: Path) -> list[str]:
+        return encode_command(
+            raw, target, chosen, sample_rate=sample_rate, channels=channels,
+            layout=layout, language=language, title=title, trim_samples=trim,
+        )
+
+    if dry_run:
+        # The real intermediate gets a name of its own when there is one to
+        # write; this stands in for it in the command that is shown.
+        placeholder = work / f".{target.stem}.XXXXXXXX.f32le"
+        result = Encoded(
+            path=target, encoding=encoding, trimmed_samples=trim,
+            command=tuple(command_for(placeholder)),
+        )
+        log.info("would write %s", result.describe())
+        return result
+    # The intermediate is a file this call creates under a name nobody else
+    # chose, and it is the only thing this call removes. Deriving it from the
+    # output's name once overwrote and then deleted the caller's own samples
+    # whenever they shared a stem with the output.
+    work.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(prefix=f".{target.stem}.", suffix=".f32le", dir=work)
+    os.close(handle)
+    raw = Path(name)
+    command = command_for(raw)
     result = Encoded(
         path=target, encoding=encoding, trimmed_samples=trim, command=tuple(command)
     )
-    if dry_run:
-        log.info("would write %s", result.describe())
-        return result
-    write_raw(block, raw)
-    run = runner if runner is not None else default_runner(config)
-    run("ffmpeg", command)
-    raw.unlink(missing_ok=True)
+    try:
+        write_raw(block, raw)
+        run = runner if runner is not None else default_runner(config)
+        run("ffmpeg", command)
+    finally:
+        raw.unlink(missing_ok=True)
     log.info("wrote %s", result.describe())
     return result

@@ -41,6 +41,7 @@ early in the finished file by exactly the head that was invisible.
 from __future__ import annotations
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -150,10 +151,36 @@ def absolute_lag(
     ``stream_a`` and ``stream_b`` are container stream indices, not audio
     positions: the excerpt is cut by index and the two streams become audio 0
     and audio 1 of it, in that order.
+
+    The excerpt and its dumps are scratch: they go into a private directory
+    (inside ``work_dir`` when one is given, the system's temporary space
+    otherwise) that is removed before this returns. Nothing is written next to
+    the source.
     """
     run = runner if runner is not None else default_runner(config)
-    work = Path(work_dir) if work_dir is not None else Path(source).parent
-    work.mkdir(parents=True, exist_ok=True)
+    parent: Path | None = None
+    if work_dir is not None:
+        parent = Path(work_dir)
+        parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="dubalign-excerpt-", dir=parent) as scratch:
+        return _absolute_lag_in(
+            Path(scratch), source, stream_a, stream_b, t0,
+            dur=dur, sr=sr, search_s=search_s, run=run,
+        )
+
+
+def _absolute_lag_in(
+    work: Path,
+    source: Path | str,
+    stream_a: int,
+    stream_b: int,
+    t0: float,
+    *,
+    dur: float,
+    sr: int,
+    search_s: float,
+    run: Runner,
+) -> AbsoluteLag:
     excerpt = work / f"excerpt_{stream_a}_{stream_b}_{int(t0)}.mkv"
     run(
         "ffmpeg",

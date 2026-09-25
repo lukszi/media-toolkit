@@ -72,14 +72,21 @@ def add_pair_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _decode_pair(args: argparse.Namespace, config: Config) -> tuple[Decoded, Decoded]:
+def _decode_pair(
+    args: argparse.Namespace, config: Config, *, reuse: bool = True
+) -> tuple[Decoded, Decoded]:
+    """Decode both sides, reusing a dump only where it is of the same source.
+
+    The names are readable prefixes; which dump belongs to which file is
+    decided by the fingerprint :func:`dubalign.decode.decode` puts in the name.
+    """
     reference = decode(
         args.reference, out_dir=args.work, audio_index=args.reference_stream,
-        name="reference", config=config,
+        name="reference", reuse=reuse, config=config,
     )
     other = decode(
         args.other, out_dir=args.work, audio_index=args.other_stream,
-        name="other", config=config,
+        name="other", reuse=reuse, config=config,
     )
     return reference, other
 
@@ -370,7 +377,9 @@ def _register_verify(subparsers: argparse._SubParsersAction) -> None:  # type: i
 
 
 def _verify(args: argparse.Namespace, config: Config) -> int:
-    reference, other = _decode_pair(args, config)
+    # The proof is of the file as it is now, so nothing earlier is reused: a
+    # verification that read a dump of something else would pass for it.
+    reference, other = _decode_pair(args, config, reuse=False)
     report = verify_against(
         reference.full(), other.full(), sample_rate=reference.sample_rate,
         window_s=args.window, step_s=args.step, bar_ms=args.bar_ms,

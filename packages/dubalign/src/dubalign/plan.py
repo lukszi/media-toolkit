@@ -363,15 +363,22 @@ def place_seam(
     a listener hears. The bracket is deliberately tight around the jump, and
     tighter still for a large step: a join that waits for a pause leaves the
     whole step running until it gets there.
+
+    Only positions whose whole span lies inside the signal are candidates: past
+    the end there is nothing to hear, which would otherwise score as the
+    quietest place of all. Between spans that are equally quiet -- a stretch of
+    digital silence scores the same everywhere -- the one nearest the jump
+    wins, so the join moves no further than it has to.
     """
     if bracket_s is None:
         bracket_s = BRACKET_BIG_S if abs(step_s) > BIG_STEP_S else BRACKET_SMALL_S
     span = max(abs(step_s), min_span_s)
+    length_s = len(other) / sr
     candidates: list[SeamScore] = []
     offset = -bracket_s
     while offset <= bracket_s + 1e-9:
         t = jump_t + offset
-        if t - span / 2.0 >= 0.0:
+        if t - span / 2.0 >= 0.0 and t + span / 2.0 <= length_s:
             candidates.append(
                 SeamScore(
                     t=t,
@@ -382,9 +389,10 @@ def place_seam(
         offset += candidate_step_s
     if not candidates:
         return Seam(
-            t=jump_t, reason="no room to move the join", jump_t=jump_t, step_s=step_s
+            t=min(max(jump_t, 0.0), length_s), reason="no room to move the join",
+            jump_t=jump_t, step_s=step_s,
         )
-    best = min(candidates, key=lambda c: c.span_db)
+    best = min(candidates, key=lambda c: (c.span_db, abs(c.t - jump_t)))
     at_the_jump = min(candidates, key=lambda c: abs(c.t - jump_t))
     reason = (
         "on the jump"
@@ -458,7 +466,7 @@ def plan_from_measurements(
                 label=f"segment {index + 1}",
                 source=source,
                 offset_samples=round(model.lag_at(start) * sample_rate),
-                rate_ratio=1.0 + model.slope,
+                rate_ratio=model.rate_ratio,
                 anchor_frame=anchor,
             )
         )

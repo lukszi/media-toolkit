@@ -156,7 +156,7 @@ def test_a_segment_knows_whether_it_needs_resampling() -> None:
     )
     assert not flat.drifts
     assert sliding.drifts
-    assert sliding.rate_ratio == pytest.approx(1.0005, abs=1e-6)
+    assert sliding.rate_ratio == pytest.approx(0.9995, abs=1e-9)
 
 
 # ------------------------------------------------------------ the two curves
@@ -237,7 +237,7 @@ def test_the_drift_after_the_step_is_in_the_model_and_the_head_is_flat(
     head, tail = found.segments
     assert not head.drifts
     assert tail.drifts
-    assert tail.rate_ratio == pytest.approx(pair.rate_after, rel=0.2)
+    assert tail.rate_ratio == pytest.approx(1.0 / pair.rate_after, rel=0.2)
 
 
 def test_refining_moves_the_jump_onto_the_instant_it_happens(

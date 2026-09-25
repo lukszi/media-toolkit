@@ -111,6 +111,29 @@ def test_a_join_at_the_very_head_still_gets_a_position() -> None:
     assert seam.t >= 0.0
 
 
+def test_a_join_near_the_end_never_lands_past_the_signal() -> None:
+    """Past the end nothing is heard, which used to score as the quietest span."""
+    signal = programme(5.0)
+    seam = place_seam(signal, 4.9, -0.080, sr=SR, bracket_s=1.0)
+    span = max(0.080, 0.030)
+    assert seam.t + span / 2.0 <= len(signal) / SR
+
+
+def test_a_jump_past_the_end_is_clamped_to_the_signal() -> None:
+    signal = programme(5.0)
+    seam = place_seam(signal, 7.0, -0.080, sr=SR, bracket_s=0.5)
+    assert 0.0 <= seam.t <= len(signal) / SR
+
+
+def test_in_silence_the_join_stays_nearest_the_jump() -> None:
+    """Equally quiet everywhere: the join moves no further than it has to."""
+    signal = programme(30.0)
+    signal[int(10.0 * SR) : int(13.0 * SR)] = 0.0
+    seam = place_seam(signal, 11.5, -0.010, sr=SR)
+    assert seam.t == pytest.approx(11.5, abs=1e-6)
+    assert seam.reason == "on the jump"
+
+
 def test_the_level_of_an_empty_span_is_not_a_number_to_act_on() -> None:
     assert span_level_db(programme(1.0), 5.0, 6.0, SR) == float("-inf")
 

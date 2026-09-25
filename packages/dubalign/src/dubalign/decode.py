@@ -19,13 +19,23 @@ The dumps are headerless float: no container to re-parse, no timestamps to
 misread, and sample *n* is unambiguously sample *n*. What the container knew
 about where the stream started is recorded by :mod:`dubalign.probe` and applied
 deliberately, rather than surviving by accident.
+
+A dump is only ever reused for the source it was made from. Its name carries a
+fingerprint of that source -- the resolved path, the track, the size and
+modification time of the file, and every decode option -- so a second film, a
+different track or a re-muxed file in the same work directory gets dumps of its
+own rather than the last one's. And a dump is written under a ``.part`` name and
+renamed into place only when the decode has finished, so an interrupted run
+leaves nothing a later run would mistake for a whole dump.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,6 +51,7 @@ __all__ = [
     "Decoded",
     "decode",
     "decode_command",
+    "source_fingerprint",
 ]
 
 log = logging.getLogger(__name__)
@@ -48,6 +59,8 @@ log = logging.getLogger(__name__)
 #: What a float dump is written as. Four bytes a sample a channel.
 SAMPLE_FORMAT = "f32le"
 BYTES_PER_SAMPLE = 4
+#: What an unfinished dump is called until the decode that writes it has ended.
+PART_SUFFIX = ".part"
 
 
 @dataclass(frozen=True)
@@ -125,6 +138,41 @@ def decode_command(
     ]
 
 
+def source_fingerprint(
+    source: Path | str,
+    stream: AudioStream,
+    *,
+    sample_rate: int,
+    channels: int,
+    analysis_rate: int,
+) -> str:
+    """A short digest of everything a dump depends on.
+
+    The file is identified by where it resolves to and by its size and
+    modification time, which is what changes when it is replaced or re-muxed;
+    the track by its absolute index; and the decode by every option that shapes
+    the samples. Any of them differing means a different dump.
+    """
+    target = Path(source)
+    status = target.stat()
+    parts = (
+        str(target.resolve()),
+        f"stream={stream.index}",
+        f"audio={stream.audio_index}",
+        f"size={status.st_size}",
+        f"mtime_ns={status.st_mtime_ns}",
+        f"rate={sample_rate}",
+        f"channels={channels}",
+        f"analysis_rate={analysis_rate}",
+        f"format={SAMPLE_FORMAT}",
+    )
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def _part(path: Path) -> Path:
+    return path.with_name(path.name + PART_SUFFIX)
+
+
 def decode(
     source: Path | str,
     *,
@@ -143,7 +191,10 @@ def decode(
 
     ``reuse`` keeps dumps that are already there, because a decode is the
     expensive part of every job in this package and re-running a measurement is
-    the normal way to work. Pass ``reuse=False`` when the source has changed.
+    the normal way to work. A dump is only found again for the same source,
+    track, file state and options, because all of them are in its name (see
+    :func:`source_fingerprint`); ``name`` is a readable prefix, not the key.
+    Pass ``reuse=False`` to decode afresh regardless.
     """
     target = Path(source)
     run = runner if runner is not None else default_runner(config)
@@ -153,8 +204,12 @@ def decode(
     directory.mkdir(parents=True, exist_ok=True)
     stem = name if name is not None else f"{target.stem}.a{audio_index}"
     width = channels if channels is not None else stream.channels
-    full_path = directory / f"{stem}.{sample_rate // 1000}k{width}ch.{SAMPLE_FORMAT}"
-    analysis_path = directory / f"{stem}.{analysis_rate // 1000}k1ch.{SAMPLE_FORMAT}"
+    key = source_fingerprint(
+        target, stream, sample_rate=sample_rate, channels=width,
+        analysis_rate=analysis_rate,
+    )
+    full_path = directory / f"{stem}.{key}.{sample_rate // 1000}k{width}ch.{SAMPLE_FORMAT}"
+    analysis_path = directory / f"{stem}.{key}.{analysis_rate // 1000}k1ch.{SAMPLE_FORMAT}"
 
     decoded = Decoded(
         source=target, stream=stream, full_path=full_path,
@@ -166,11 +221,23 @@ def decode(
         return decoded
 
     log.info("decoding %s %s in one pass", target.name, stream.selector)
-    run(
-        "ffmpeg",
-        decode_command(
-            target, stream, full_path, analysis_path,
-            sample_rate=sample_rate, channels=width, analysis_rate=analysis_rate,
-        ),
-    )
+    full_part, analysis_part = _part(full_path), _part(analysis_path)
+    # Whatever an earlier, interrupted run left under these names is not a
+    # dump of anything; it goes before the decode starts.
+    for leftover in (full_part, analysis_part):
+        leftover.unlink(missing_ok=True)
+    try:
+        run(
+            "ffmpeg",
+            decode_command(
+                target, stream, full_part, analysis_part,
+                sample_rate=sample_rate, channels=width, analysis_rate=analysis_rate,
+            ),
+        )
+        # Only a decode that finished gets the name a later run will trust.
+        os.replace(analysis_part, analysis_path)
+        os.replace(full_part, full_path)
+    finally:
+        for leftover in (full_part, analysis_part):
+            leftover.unlink(missing_ok=True)
     return decoded

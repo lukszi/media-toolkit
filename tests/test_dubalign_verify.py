@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 import pytest
 from dubalign.controls import array_controls, measure_offset_ms
-from dubalign.epk_align import AbsoluteLag, correct_lag, excerpt_command
+from dubalign.epk_align import AbsoluteLag, absolute_lag, correct_lag, excerpt_command
 from dubalign.verify_pcm import BAR_MS, VerifyPoint, verify_against
 from mkvkit.run import Result
 
@@ -239,3 +239,45 @@ def test_the_runner_is_only_ever_asked_for_programs_that_exist() -> None:
 
     run("ffmpeg", excerpt_command("a.mkv", "b.mkv", 0, 1, 0.0, 1.0))
     assert seen == ["ffmpeg"]
+
+
+def excerpt_runner(signal: np.ndarray, outputs: list[Path]) -> Any:
+    """Stands in for both programs: cuts nothing, dumps the same signal twice."""
+
+    def run(tool: str, args: Any, *, ok: Any = (0,)) -> Result:
+        argv = [str(a) for a in args]
+        if tool == "ffprobe":
+            return Result(tool=tool, argv=(tool,), returncode=0, stdout="0.000000", stderr="")
+        out = Path(argv[-1])
+        outputs.append(out)
+        if out.suffix == ".f32le":
+            signal.astype(np.float32).tofile(out)
+        else:
+            out.write_bytes(b"excerpt")
+        return Result(tool=tool, argv=(tool,), returncode=0, stdout="", stderr="")
+
+    return run
+
+
+@pytest.mark.parametrize("given_work", [False, True])
+def test_the_excerpts_are_scratch_and_never_land_beside_the_source(
+    tmp_path: Path, given_work: bool
+) -> None:
+    library = tmp_path / "srv" / "media" / "movies"
+    library.mkdir(parents=True)
+    source = library / "example.mkv"
+    source.write_bytes(b"container")
+    work = tmp_path / "work" if given_work else None
+    outputs: list[Path] = []
+    found = absolute_lag(
+        source, 1, 2, 30.0, dur=4.0, sr=SR, work_dir=work,
+        runner=excerpt_runner(programme(4.0, SR), outputs),
+    )
+    assert found.true_lag_s == pytest.approx(0.0, abs=1.0 / SR)
+    assert len(outputs) == 3
+    assert all(out.parent != library for out in outputs)
+    assert [p.name for p in library.iterdir()] == ["example.mkv"]
+    assert not any(out.exists() for out in outputs), "the scratch was not removed"
+    if work is not None:
+        assert all(work in out.parents for out in outputs)
+        assert list(work.iterdir()) == []
