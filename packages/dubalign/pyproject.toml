@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -25,6 +25,11 @@ classifiers = [
 # Arrays are not optional here: they are what the library is.
 dependencies = ["numpy>=1.26", "mkvkit>=0.2"]
 
+[project.urls]
+Homepage = "https://github.com/lukszi/media-toolkit"
+Repository = "https://github.com/lukszi/media-toolkit"
+Issues = "https://github.com/lukszi/media-toolkit/issues"
+
 [project.scripts]
 dubalign = "dubalign.cli:main"
 
@@ -40,4 +45,4 @@ path = "src/dubalign/__init__.py"
 packages = ["src/dubalign"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "README.md", "LICENSE"]
+include = ["src", "README.md", "CHANGELOG.md", "LICENSE"]

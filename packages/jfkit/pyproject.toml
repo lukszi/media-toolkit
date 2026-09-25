@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -26,6 +26,11 @@ classifiers = [
 # caller nothing, and it survives a later split as an ordinary dependency.
 dependencies = ["mkvkit>=0.1.0"]
 
+[project.urls]
+Homepage = "https://github.com/lukszi/media-toolkit"
+Repository = "https://github.com/lukszi/media-toolkit"
+Issues = "https://github.com/lukszi/media-toolkit/issues"
+
 [project.scripts]
 jfkit = "jfkit.cli:main"
 
@@ -39,4 +44,4 @@ path = "src/jfkit/__init__.py"
 packages = ["src/jfkit"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "README.md", "LICENSE"]
+include = ["src", "README.md", "CHANGELOG.md", "LICENSE"]

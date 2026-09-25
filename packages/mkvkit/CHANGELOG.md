@@ -58,6 +58,15 @@ and not say so.
 - The chapter-database adapter's disabled message named a command-line flag
   that does not exist; it now names the constructor argument.
 
+### Packaging
+
+- **Where it comes from is written down.** The package metadata names the
+  repository, its source and its issue tracker (`[project.urls]`), the source
+  distribution now carries this changelog, and the build backend is required
+  at the version that understands the `license-files` field the metadata
+  uses. The package is not on PyPI; the README says how to install it from
+  the repository.
+
 ## 0.3.0 -- 2026-09-23
 
 Chapter names: where a published list comes from, whether its names describe

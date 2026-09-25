@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -25,6 +25,11 @@ classifiers = [
 # Nothing heavy is added to save twenty lines; it becomes an extra instead.
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/lukszi/media-toolkit"
+Repository = "https://github.com/lukszi/media-toolkit"
+Issues = "https://github.com/lukszi/media-toolkit/issues"
+
 [project.scripts]
 mkvkit = "mkvkit.cli:main"
 
@@ -41,4 +46,4 @@ path = "src/mkvkit/__init__.py"
 packages = ["src/mkvkit"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "README.md", "LICENSE"]
+include = ["src", "README.md", "CHANGELOG.md", "LICENSE"]

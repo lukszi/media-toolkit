@@ -102,6 +102,16 @@ day the work was done.
   starts it with `/Run`. `launch_detached()` returns the list of commands;
   `detached_commands()` is new.
 
+### Packaging
+
+- **Where it comes from is written down.** The package metadata names the
+  repository, its source and its issue tracker (`[project.urls]`), the source
+  distribution now carries this changelog, and the build backend is required
+  at the version that understands the `license-files` field the metadata
+  uses. The package is not on PyPI; the README says how to install it from
+  the repository, together with `mkvkit` in the same command so that pip
+  never looks for it on PyPI.
+
 ## 0.3.0 -- 2026-09-23
 
 The server side, finished. Every module that was a skeleton at 0.1.0 is now
@@ -109,7 +119,7 @@ implemented, tested and documented, and the four that write default to a dry
 run.
 
 There is no 0.2.0: that number was reserved for the file-side package, which
-released it first, and the two are versioned independently.
+reached it first, and the two are versioned independently.
 
 ### Added
 

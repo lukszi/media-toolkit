@@ -35,6 +35,16 @@ day the work was done.
   given) that is removed before it returns.
 - **The README's job ends by verifying a file the job creates.**
 
+### Packaging
+
+- **Where it comes from is written down.** The package metadata names the
+  repository, its source and its issue tracker (`[project.urls]`), the source
+  distribution now carries this changelog, and the build backend is required
+  at the version that understands the `license-files` field the metadata
+  uses. The package is not on PyPI; the README says how to install it from
+  the repository, together with `mkvkit` in the same command so that pip
+  never looks for it on PyPI.
+
 ## 0.1.0 -- 2026-09-23
 
 The first release. Align an audio track from one transfer of a programme onto
