@@ -112,7 +112,8 @@ none of them is published on PyPI.
 **Edit a Matroska file, and prove you changed only what you meant to.**
 `mkvkit probe` says what is in a file, from both programs that can describe
 one; `mkvkit integrity` says whether its payload is actually there and plays,
-which no header can. `mkvkit propedit` changes a track header in place, selecting the track by
+which no header can, and `mkvkit health` asks it of a whole library, cheaply
+first and one reader per disk. `mkvkit propedit` changes a track header in place, selecting the track by
 the identifier it carries, and reads the file back to prove nothing else
 moved. `mkvkit remux` rebuilds a file without the tracks a policy allows
 dropping -- into a staging directory, never over the input -- and

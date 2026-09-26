@@ -125,6 +125,78 @@ There is no switch that skips it.
 
 ---
 
+## `mkvkit.health` -- the whole library, cheaply first
+
+`integrity` answers for one file by reading all of it. A library has
+thousands, and the ones that matter -- a download that reserved its space and
+never filled it, a copy that stopped half way -- look healthy to everything
+that reads headers. `health` finds them in two stages, the first cheap enough
+to run over everything:
+
+```
+mkvkit health /srv/media/movies /srv/media/series \
+    --exclude-path "/srv/media/series/Signal Hill" --blocks 8 \
+    --json work/health.json --tsv work/health.tsv --titles
+```
+
+**Stage 1, every video file, a glance each.** Four checks, none of which
+reads more than a few megabytes:
+
+1. a sampled zero-fill read -- `--blocks` evenly spaced blocks (16 by default,
+   `--block-kib` each);
+2. the container's own extent -- a Matroska segment, the top-level boxes of an
+   MP4 or the chunks of an AVI declare how many bytes the file has; a file
+   shorter than that was cut off;
+3. the probe's durations -- each audio and video track's stated duration
+   against the container's (`--duration-tolerance`, or 5 %, whichever is
+   more). A single stray packet stamped far past the end makes a twenty-minute
+   episode "last" forty-two, and only this comparison shows it;
+4. size against duration and bitrate -- the file against its tracks' own
+   statistics (or stated bitrates), and against a floor no real picture of its
+   size averages below.
+
+A file that passes all four is **OK**, one that fails any is **SUSPECT** with
+the evidence, and one that cannot be opened is **UNREADABLE**.
+
+**Stage 2, the suspects only, read whole.** `integrity.check()` -- every packet
+listed, every frame decoded -- makes a suspect **CORRUPT**, or clears it to
+**OK**. A file the demuxer cannot open at all is CORRUPT too; one nothing
+could open, or a missing program, is UNREADABLE. `--confirm N` confirms at
+most N suspects, `--no-confirm` stops after stage 1, `--no-decode` lists
+packets without decoding.
+
+**One reader per disk.** Both stages run through `lanes.map_by_device`: one
+worker per disk, the disks side by side. `--same-disk VOLUME=DISK` puts two
+partitions of one disk in one lane. With jfkit installed, each lane waits on
+the device gate (`--gate auto`, the default; see `jfkit jobs gate`) before
+it starts, and again every `--gate-every` seconds; `--gate local` leaves the
+server out, `--gate off` the gate. `--lock PATH` holds every lane while that
+file exists, for jobs that take turns across processes.
+
+**Incremental and resumable.** Every answer is appended to `--state` (by
+default `health-state.jsonl` in `[paths].work`) as it is known, keyed by path,
+size, modification time and a fingerprint of the stage-1 settings. A second
+run reads only what changed; an interrupted one continues where it stopped.
+A confirmed verdict is kept until the file changes. `--rescan` reads
+everything again.
+
+**Bounded runs.** `--time-budget MIN` starts no file after that many minutes;
+the rest wait for the next run. `--subset N` reads at most N files per disk,
+spread evenly through it, and the summary projects how long every file would
+take at the pace measured. A line per disk every `--progress-every` seconds
+gives files done, files per second, the read rate and an ETA.
+
+**Output.** The table lists every file that is not OK, worst first, with its
+evidence; `--all` adds the rest. `--json` and `--tsv` write every verdict.
+`--titles` names each file that is not OK by the server item that plays it
+(through `jfkit.query`). Confirmed corrupt files are printed as a `jfkit
+delete` manifest (`--manifest PATH` writes it) under the category `corrupt`,
+which `jfkit delete` does not check yet: the manifest is for a person to
+release. The exit code is 0 only when every file is OK and every file was
+reached.
+
+**Read-only, always.** Nothing is moved, renamed or deleted.
+
 ## `mkvkit.transfer` -- copy or move, and prove the copy
 
 A move between volumes is a copy followed by a delete, and only the delete

@@ -28,6 +28,7 @@ no install location is written into the code.
 ```
 mkvkit probe    FILE...                     what is in it, by its headers
 mkvkit integrity FILE...                    whether the payload is there and plays
+mkvkit health   ROOT...                     every file of a library: sweep, then confirm
 mkvkit chapters show|check|rollback|apply   the marks, and the document
 mkvkit chapters classify|match|windows      somebody else's names: which job,
 mkvkit chapters selfcheck|plan              whether they fit, what changes

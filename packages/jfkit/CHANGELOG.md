@@ -7,6 +7,21 @@ day the work was done.
 
 ### Added
 
+- **The device gate sees what used to hide from it, and says which signal
+  held it.** A decoder whose command line cannot be read (the server's, run
+  as another account) now holds the gate instead of being ignored; the
+  device's own counters are sampled for a second without privilege; and the
+  server's sessions, running tasks and recently changed items are read.
+  `jfkit jobs gate` names every signal that made it RED and gained
+  `--sample`, `--recent-window`, `--lock`, `--wait` and `--json`.
+  `jobs.observe()` and `jobs.LaneGate` give the same to Python callers, the
+  second as a ready `before_each` for `lanes.map_by_device`.
+- **`jfkit.validation`: a change at a library's top level is said to cost a
+  whole-library validation, before it is made.** For the verbs that remove,
+  park, move or rename.
+- **`jfkit.healthlink`: the server's half of `mkvkit health`** -- its gate,
+  and each suspect file's item id and title.
+
 - **`find`, `children` and `playstate`.** Items by name, path, provider id
   or type; an item's children, descendants or extras; and every user's
   watched state for items, read as each user. All user-scoped, printed as

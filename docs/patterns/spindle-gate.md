@@ -109,6 +109,32 @@ jfkit jobs lanes /srv/media/movies/*.mkv
 `lanes=2` splits one device into two balanced queues, for storage that can
 take it. The default is one, because that is what a spinning disk wants.
 
+## 8. The server's own work hides; ask the disk
+
+The server's decoders run as another account. An unprivileged process listing
+returns their names and an **empty** command line, so the device test in
+section 2 has nothing to test, and a gate built only on it says "clear" while
+the server generates preview tiles on that very disk -- work that a change it
+noticed started, and that no scheduled task shows.
+
+So the gate reads more than the process list:
+
+- **a decoder whose command line cannot be read** holds every device
+  (`hidden-reader`), named with its owner and, where its parent is the
+  server, as the server's;
+- **the device's own counters** are watched for a second (`disk-activity`):
+  bytes read and written and the time the device was busy, from the volume's
+  performance counters on Windows and the kernel's disk statistics on Linux,
+  both readable without privilege. Watched while the caller's own reader is
+  between items, anything they show is somebody else;
+- **the server's sessions** (`playback`), **its running tasks** (`task`) and
+  **the items it changed recently** (`recent-changes`), in three reads.
+
+A hidden reader and recent changes are indirect: they say work may be
+happening, not where. When the counters show the device quiet, both are
+reported as notes and do not hold it. Every other signal holds it outright,
+and the gate names each one that did.
+
 ---
 
 ## The shape of a job that uses this
@@ -127,11 +153,12 @@ after every interruption, and long jobs get interrupted.
 
 ## What is not implemented
 
-- **No load measurement.** The gate asks who is reading, not how busy the
-  device is. A queue-depth or busy-percentage reading would be a better
-  signal and is platform-specific everywhere.
+- **No load measurement on other platforms.** The device's own counters are
+  read on Windows and Linux only; elsewhere the `disk-activity` signal is
+  absent, and a hidden reader holds every device.
 - **No cross-machine coordination.** Two machines reading one network share
   are two readers, and nothing here can see the other one.
-- **No writer detection.** A heavy *writer* is just as bad and is not in the
-  list of program names, because the same programs do both and telling them
-  apart means parsing their arguments.
+- **No writer detection by name.** A heavy *writer* is just as bad and is not
+  in the list of program names, because the same programs do both and telling
+  them apart means parsing their arguments. The device's counters do count
+  what is written, so a busy writer shows as `disk-activity`.

@@ -354,6 +354,35 @@ name, and a name that matches two things is an error rather than a coin toss.
 An identifier in a source file addresses nothing on another machine -- and it
 does not fail loudly when it does.
 
+**The gate reports which signal made it RED.** `jfkit jobs gate PATH` looks
+at eight things and names every one that holds the device:
+
+| signal | what it sees |
+|---|---|
+| `reader` | a decoder or muxer whose command line names this device |
+| `hidden-reader` | a decoder whose command line cannot be read -- another account's, typically the server's -- named with its owner and the server process that started it |
+| `playback` | a session playing a file from this device (paused playback is a note) |
+| `task` | a scheduled task the server says is running |
+| `disk-activity` | the device's own counters over `--sample` seconds: more than 4 MiB/s moving, or busy more than 30 % of the time |
+| `recent-changes` | items on this device the server changed within `--recent-window` minutes: previews and chapter images for changed items are made outside any scheduled task |
+| `lock` | a `--lock` file that exists, quoted |
+| `server` | the server could not be asked; that is not the same as idle |
+
+The two indirect signals, `hidden-reader` and `recent-changes`, become notes
+when the device's counters show it quiet over the sample: whatever they point
+at is not happening on this disk. `--wait MIN` looks again every minute until
+the device is clear; `--json` prints the gate as data. In Python,
+`jobs.observe()` gathers the signals and `jobs.LaneGate` is a ready
+`before_each` for `lanes.map_by_device`.
+
+**A change at a library's top level costs a whole-library validation.**
+`jfkit.validation.expect_library_validation(roots=..., removes=..., creates=...)`
+says so beforehand: removing, parking or moving away a folder directly under
+a library root, or creating a new one, makes the server refresh the library's
+collection folder, which lists everything below the root again. Verbs that
+remove, move or rename should print its warnings in their dry run. The roots
+come from `refresh.library_roots()`.
+
 ## `jfkit.query` -- find, children, playstate
 
 The read side a cleanup keeps needing, without an identifier up front:

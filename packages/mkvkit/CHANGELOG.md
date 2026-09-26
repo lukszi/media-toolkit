@@ -11,6 +11,17 @@ and not say so.
 
 ### Added
 
+- **`mkvkit health`: find the files whose payload is not there.** Stage 1
+  glances at every video file under the roots -- a sampled zero-fill read,
+  the container's declared extent, the tracks' durations against the
+  container's, and size against bitrate -- and stage 2 reads each suspect
+  whole with `integrity.check()`. One reader per disk through
+  `lanes.map_by_device`, a gate before each lane's files when jfkit is
+  installed, a state file that makes a re-run read only what changed and an
+  interrupted run resume, a throughput and ETA line per disk, and a verdict
+  per file (OK, SUSPECT, CORRUPT, UNREADABLE) with its evidence as a table,
+  JSON and TSV. Read-only; corrupt files are printed as a deletion manifest
+  for a person to release.
 - **`mkvkit.walk` does not wander onto another disk.** A junction is a
   directory that `os.path.islink` calls ordinary, so a plain walk descends
   into it. `walk()` enters no symbolic link, junction or other directory
