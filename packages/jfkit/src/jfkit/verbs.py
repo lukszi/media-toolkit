@@ -11,6 +11,10 @@ resumable after a partial failure.
 ``leftovers sweep`` proposes release junk, dead release folders, samples
 and unplayable files and parks the released categories through a plan;
 ``leftovers missing`` reports what the library lacks (:mod:`jfkit.leftovers`).
+``dedupe`` resolves copies of one film or episode into a keeper and parked
+copies (:mod:`jfkit.dedupe`), and ``rename`` renames videos and folders with
+their sidecars and watched state (:mod:`jfkit.rename`); both are one
+audited, resumable plan.
 
 ``playstate`` and every ``userdata`` verb take ``--jobs N``: how many requests
 run at once, default :data:`mkvkit.lanes.DEFAULT_WORKERS`.

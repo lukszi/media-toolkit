@@ -41,7 +41,6 @@ day the work was done.
   and checks that again at the moment of the park.
 - **`userdata.merge` and `userdata.carries`.** One user's state across
   several copies of one film as one row, and whether one row holds another.
-
 - **`leftovers sweep` and `leftovers missing`.** A walk of every media
   library (never through a link or a junction, one device after the
   other, each behind the device gate) sorts every file into junk,
@@ -71,7 +70,6 @@ day the work was done.
   season/episode slot, which the snapshot does not account for, and reports
   the last-played dates it cannot clear. It is a `mkvkit.steps` plan: dry
   run, audit, resume.
-
 - **`rename`.** Rename videos or folders as one audited plan: one pair, or a
   tab-separated mapping of many. Every target is predicted with the naming
   port and checked against what was intended, for path length with the

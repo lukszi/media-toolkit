@@ -4,8 +4,9 @@ Jellyfin administration from the command line: the API client, whole-record
 round-trips that do not empty the fields they omit, non-replacing refreshes
 with drift detection, filename-parse prediction, library options with their
 defaults filled in, database and preview upkeep, six read-only surveys,
-in-place file swapping, evidence-first deletion, segment scoping, and a device
-gate for the jobs that read everything.
+in-place file swapping, evidence-first deletion, duplicate resolution,
+leftover sweeps, audited renames, item and watched-state queries, segment
+scoping, and a device gate for the jobs that read everything.
 
 `jfkit` is not on PyPI, and `pip install jfkit` from PyPI is not available.
 Install it from [the repository](https://github.com/lukszi/media-toolkit),
@@ -53,7 +54,9 @@ All three read and change nothing.
 
 `docs/jfkit.md` is the guide. The procedures with a method document of their
 own are the swap (`docs/methods/swap-procedure.md`), deletion
-(`docs/methods/safe-deletion.md`), the database
+(`docs/methods/safe-deletion.md`), resolving duplicates
+(`docs/methods/duplicate-resolution.md`), renaming
+(`docs/runbooks/rename.md`), the database
 (`docs/runbooks/db-maintenance.md`) and the device gate
 (`docs/patterns/spindle-gate.md`). Two fully invented worked examples are
 under `examples/recipes/`.

@@ -77,16 +77,21 @@ The mitigations are part of the design, not optional flags:
 * no command deletes anything -- a replaced file is moved to the configured
   parked directory and left there. `jfkit delete` moves a released file there
   too and then notifies the server that its path is gone; it never calls the
-  server's item delete, which removes the item's containing folder from disk;
+  server's item delete, which removes the item's containing folder from disk.
+  `jfkit dedupe` and `jfkit leftovers sweep` park the same way, and every
+  verb that parks keeps the path's layout, drive letter included;
 * every apply that changes an existing file, record or database writes its
   rollback artefact before its first write, and does not run when it cannot:
   `mkvkit propedit`, `chapters apply` and `chapters plan` (`--rollback-dir`,
   default `<[paths].work>/rollback`), `jfkit item set` (`--backup`),
   `libopts set` and `segments scope` (`--backup-dir`) and `maintenance run`
-  (`--snapshot-dir`). A rebuild never writes its source, a swap's rollback is
-  the parked original, a preview restore only adds what is missing, and a
-  refresh, a path notification or a scan cancel asks the server to do work and
-  has nothing to roll back;
+  (`--snapshot-dir`). A watched-state write (`jfkit userdata replay`,
+  `dedupe`, `rename`) carries the row's state from before it in the plan its
+  audit starts with, and `rename` also keeps every user's state in its
+  `--work` folder before anything moves. A rebuild never writes its source,
+  a swap's rollback is the parked original, a preview restore only adds what
+  is missing, and a refresh, a path notification or a scan cancel asks the
+  server to do work and has nothing to roll back;
 * what is verified after a write, exactly: `mkvkit remux --apply` hashes every
   stream of both files and compares them against the rebuild's own plan before
   it exits; a header edit (`propedit`, `chapters apply`, `chapters plan`)
@@ -98,11 +103,12 @@ The mitigations are part of the design, not optional flags:
   the catalogue after the file is parked;
 * what is proved before a copy is given up, exactly: `jfkit delete` reads the
   payload of the copy that is kept (twins, superseded copies, rebuild donors),
-  and `mkvkit swap` and `jfkit swap` read the replacement's, before anything
-  moves -- a sampled zero-fill read, every packet against the container's
-  duration and, unless `quick` is asked for, a full decode (`mkvkit
-  integrity`). A copy that fails, or that cannot be checked, refuses the
-  operation;
+  and `jfkit dedupe` reads the keeper's (in the dry run, and again at each
+  park), and `mkvkit swap` and `jfkit swap` read the replacement's, before
+  anything moves -- a sampled zero-fill read, every packet against the
+  container's duration and, unless `quick` is asked for, a full decode
+  (`mkvkit integrity`). A copy that fails, or that cannot be checked, refuses
+  the operation;
 * a container whose type is not what its extension claims is refused rather
   than edited, because the header editor would otherwise report success while
   changing nothing.

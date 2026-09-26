@@ -5,8 +5,8 @@ repository.
 
 | Package | Directory | What it does |
 |---|---|---|
-| `mkvkit` | `packages/mkvkit` | the file side: safe header edits, original-vs-rebuilt verification, chapters, Matroska tags, container probing, spoken-language identification |
-| `jfkit` | `packages/jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, leftover sweeps and missing-content reports, segment scoping, detached jobs |
+| `mkvkit` | `packages/mkvkit` | the file side: safe header edits, original-vs-rebuilt verification, chapters, Matroska tags, container probing, payload integrity and library health scans, verified copies, link-safe walks, sidecar sets, resumable plans, spoken-language identification |
+| `jfkit` | `packages/jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, duplicate resolution, audited renames that carry sidecars and watched state, leftover sweeps and missing-content reports, item and watched-state queries, segment scoping, detached jobs |
 | `dubalign` | `packages/dubalign` | aligning a foreign-language dub to a different transfer of the same title: decode, measure, find the seams, splice, verify |
 
 `mkvkit` and `dubalign` are useful with no media server at all. `jfkit` talks
@@ -174,7 +174,11 @@ world rather than against the manifest, proves that a kept copy plays before
 it gives up another, and parks rather than deletes. `jfkit leftovers sweep`
 proposes the release junk, dead release folders, samples and unplayable files
 a library collects, for the same checks and a resumable plan that parks, and
-`jfkit leftovers missing` reports what the library lacks.
+`jfkit leftovers missing` reports what the library lacks. `jfkit dedupe`
+resolves copies of one film or episode into one keeper that covers every
+other, carries everybody's watched state onto it and parks the rest, and
+`jfkit rename` renames videos and folders with their sidecars and watched
+state; both are one audited plan that resumes where it stopped.
 `jfkit libopts`, `jfkit maintenance`, `jfkit segments` and `jfkit jobs` cover
 library options, the catalogue database, scoping a segment pass, and not
 putting two heavy readers on one disk.
@@ -182,8 +186,10 @@ putting two heavy readers on one disk.
 **Predict how a media server will read a filename, before renaming.**
 `jfkit naming PATH...` prints what each name would be read as and exits
 non-zero if any of them would be read as an episode *range*, which is the
-expensive mistake. It is pinned by a table of sixty-five invented names and it
-records the release it was checked against.
+expensive mistake. It ports the server's naming, extras and season rules, is
+pinned by a table of sixty-five invented names and by the upstream naming
+tests translated into invented ones, and records the release it was checked
+against.
 
 Beside them, references that stand on their own: `docs/gotchas/` on one media
 server release and on Matroska and ffmpeg, guides to each side in

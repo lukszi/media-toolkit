@@ -38,6 +38,9 @@ mkvkit remux    FILE --staging DIR          rebuild it without some tracks
 mkvkit verify   ORIGINAL BUILT              prove the difference was intended
 mkvkit swap     KEEPER REPLACEMENT          park the old file, install the new
 mkvkit copy     SOURCE DESTINATION          copy or move, proved on both sides
+mkvkit sidecars PATH...                     what belongs to a video
+mkvkit walk     ROOT                        a tree, without following links
+mkvkit steps    show|status|apply PLAN      finish a saved plan from its audit
 mkvkit langid   jobs|scan|report            what language is actually spoken
 ```
 
