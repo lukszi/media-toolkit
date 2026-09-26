@@ -57,6 +57,7 @@ from ..query import users as list_users
 from ..refresh import library_roots, notify_changed
 from ..safedelete import Candidate, parked_relative, safe_delete
 from ..safedelete.evidence import loose_tracks, media_free
+from ..validation import warnings_for
 from .resolver import Verdict, default_checker
 from .rules import SAFE
 
@@ -203,12 +204,7 @@ def _folder_candidates(
                 notes.append(f"{folder} is left: something in it could not be looked at")
                 continue
             out.append(folder)
-            if any(_key(folder.parent) == _key(root) for root in roots):
-                notes.append(
-                    f"{folder.name} sits directly under a library folder: when it "
-                    "goes the server looks at that whole library again -- run this "
-                    "on a quiet disk"
-                )
+            notes += warnings_for(roots, removes=[folder])
     return out, notes
 
 

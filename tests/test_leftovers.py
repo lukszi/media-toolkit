@@ -251,6 +251,18 @@ def test_samples_move_only_when_their_category_is_released(
         == {SAMPLE}
 
 
+def test_a_parked_folder_at_the_top_of_a_library_is_said_to_cost_a_validation(
+    server: tuple[str, Recorder], library: dict[str, Any], tmp_path: Path,
+) -> None:
+    _client, _found, assessed = _sweep(server, library, DEAD_FOLDER)
+    root = str(library["root"])
+    noted = build_plan(assessed, parked=tmp_path / "parked", roots=[root]).notes
+    assert any(library["dead"].name in n and "validate that whole library" in n
+               for n in noted), noted
+    quiet = build_plan(assessed, parked=tmp_path / "parked").notes
+    assert not any("validate" in n for n in quiet)
+
+
 def test_an_applied_plan_parks_everything_and_touches_nothing_else(
     server: tuple[str, Recorder], library: dict[str, Any], tmp_path: Path,
 ) -> None:

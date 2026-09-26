@@ -412,6 +412,21 @@ def test_an_intention_given_explicitly_is_what_is_checked(tmp_path: Path) -> Non
     assert any("read as episode 17, not 18" in p.reason for p in wrong.problems)
 
 
+def test_a_new_top_level_folder_is_said_to_cost_a_validation(tmp_path: Path) -> None:
+    root = tmp_path / "lib"
+    season = root / "Northwind" / "Season 01"
+    season.mkdir(parents=True)
+    old = season / "Northwind - S01E01.mkv"
+    old.write_text("x", encoding="utf-8")
+    moved = root / "Northwind (1978)" / "Season 01" / "Northwind (1978) - S01E01.mkv"
+    plan = plan_files([Pair(old, moved)], Options(roots={str(root): "tvshows"}))
+    assert any("'Northwind (1978)'" in n and "validate that whole library" in n
+               for n in plan.notes), plan.notes
+    stays = plan_files([Pair(old, season / "Northwind - S01E01 (1).mkv")],
+                       Options(roots={str(root): "tvshows"}))
+    assert not any("validate" in n for n in stays.notes)
+
+
 def test_a_library_root_is_not_notified(env: Env, capsys: pytest.CaptureFixture[str]) -> None:
     folder = _northwind(env)
     renamed = folder.with_name("Northwind (1978)")

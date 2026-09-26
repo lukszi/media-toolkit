@@ -17,18 +17,17 @@ that removes, parks, moves or renames something in a library should ask
 run too, where it is most useful -- so the change can be put on a quiet disk
 at a quiet hour.
 
-**For the verbs that will call this.** It is deliberately a plain function of
-paths and roots, with no server call of its own, so it fits wherever a plan
-is built:
+**Who calls it.** It is deliberately a plain function of paths and roots,
+with no server call of its own, so it fits wherever a plan is built:
 
-* ``jfkit delete`` -- today it parks the video file only, which never empties
-  a top-level folder by itself. A category that parks a whole release folder
-  (finding 20's unplayable-file category, which should take the item's
-  sidecars and junk with it, or a media-free top-level folder) removes the
-  folder: pass it as ``removes``.
-* a move or a rename -- the source as ``removes`` when the folder itself
-  moves, the destination as ``creates``; a destination whose top-level
-  folder already exists costs nothing and is not reported.
+* ``jfkit delete`` -- a folder candidate (a media-free folder, or a leftover
+  category that parks a whole release folder) is passed as ``removes``, and
+  the warning is a note on the outcome and in the audit;
+* ``jfkit dedupe`` and ``jfkit leftovers sweep`` -- every release folder the
+  plan parks is passed as ``removes``, and the warning is a plan note;
+* ``jfkit rename`` -- a renamed folder as ``removes``, every target as
+  ``creates``; a target whose top-level folder already exists costs nothing
+  and is not reported.
 * ``jfkit notify`` already refuses to name a library root; this is the
   broader warning for the change itself, and is independent of whether
   anybody notifies.

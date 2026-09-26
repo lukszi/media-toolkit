@@ -490,9 +490,11 @@ the device is clear; `--json` prints the gate as data. In Python,
 `jfkit.validation.expect_library_validation(roots=..., removes=..., creates=...)`
 says so beforehand: removing, parking or moving away a folder directly under
 a library root, or creating a new one, makes the server refresh the library's
-collection folder, which lists everything below the root again. Verbs that
-remove, move or rename should print its warnings in their dry run. The roots
-come from `refresh.library_roots()`.
+collection folder, which lists everything below the root again. `delete`
+(a folder candidate), `dedupe` and `leftovers sweep` (every release folder
+they park) and `rename` (a renamed folder, and every target's top-level
+folder) print its warnings in the dry run, as notes; none of them refuses
+for it. The roots come from `refresh.library_roots()`.
 
 ## `jfkit.query` -- find, children, playstate
 

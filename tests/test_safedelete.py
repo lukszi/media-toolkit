@@ -908,6 +908,6 @@ def test_a_folder_directly_under_a_library_folder_says_what_its_removal_costs(
         audit=tmp_path / "audit.log",
     )
     assert report.allowed
-    assert any("refreshes that whole library" in n for n in report.allowed[0].notes)
-    assert "refreshes that whole library" in str(report)
+    assert any("validate that whole library" in n for n in report.allowed[0].notes)
+    assert "validate that whole library" in str(report)
     assert "note:" in (tmp_path / "audit.log").read_text(encoding="utf-8")

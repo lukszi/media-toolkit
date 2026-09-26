@@ -279,7 +279,7 @@ def _sweep(args: argparse.Namespace, config: Config) -> int:
         client, findings, released=args.release, catalogue=catalogue,
         rules=load_rules(args.rules), roots=roots, integrity=reports,
     )
-    plan = build_plan(assessed, parked=parked or Path("parked"))
+    plan = build_plan(assessed, parked=parked or Path("parked"), roots=roots)
     if args.plan_out:
         plan.save(args.plan_out)
     if args.out:

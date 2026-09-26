@@ -50,6 +50,7 @@ from ..safedelete.catalogue import Catalogue, path_key
 from ..safedelete.evidence import identical
 from ..safedelete.junk import DEFAULT_RULES, Rules
 from ..safedelete.leftovers import CORRUPT, SAMPLE
+from ..validation import warnings_for
 from .scan import Finding
 
 __all__ = [
@@ -171,8 +172,15 @@ def _measured(path: Path) -> tuple[int, int] | None:
     return (st.st_size, st.st_mtime_ns)
 
 
-def build_plan(assessed: Sequence[Assessed], *, parked: Path | str) -> Plan:
-    """One park step per candidate that may move; notes for the rest."""
+def build_plan(
+    assessed: Sequence[Assessed], *, parked: Path | str, roots: Sequence[str] | None = None,
+) -> Plan:
+    """One park step per candidate that may move; notes for the rest.
+
+    With the library folders as ``roots``, a parked folder directly under
+    one is said to cost a validation of that whole library
+    (:func:`jfkit.validation.warnings_for`).
+    """
     steps: list[Step] = []
     notify: list[str] = []
     for index, one in enumerate((a for a in assessed if a.allowed), start=1):
@@ -212,6 +220,10 @@ def build_plan(assessed: Sequence[Assessed], *, parked: Path | str) -> Plan:
         f"released, {counts.get('refused', 0)} refused",
         f"parked at {parked}; nothing is deleted",
     ]
+    if roots:
+        notes += warnings_for(roots, removes=[
+            a.finding.path for a in assessed if a.allowed and a.finding.is_dir
+        ])
     return Plan(verb="leftovers", steps=tuple(steps), notes=tuple(notes))
 
 

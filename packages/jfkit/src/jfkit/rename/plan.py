@@ -71,6 +71,7 @@ from ..naming import (
     parse,
     season_folder,
 )
+from ..validation import warnings_for
 
 __all__ = [
     "EXPECT_KINDS",
@@ -711,6 +712,14 @@ def plan_files(pairs: Sequence[Pair], options: Options | None = None) -> FilePla
     if not opts.roots:
         notes.append("no library roots are known: a notification of a root could not be "
                      "ruled out here")
+    else:
+        # A top-level folder that goes or appears costs a validation of the
+        # whole library whether or not anybody notifies; say so beforehand.
+        notes += warnings_for(
+            list(opts.roots),
+            removes=[unit.old for unit in units if unit.kind == "folder"],
+            creates=[unit.new for unit in units],
+        )
 
     # ------------------------------------------------ steps
     mkdirs: dict[str, Path] = {}

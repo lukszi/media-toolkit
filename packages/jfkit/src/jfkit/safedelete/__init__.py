@@ -83,6 +83,7 @@ from ..client import Client
 from ..dto import every_user, fetch, user_data
 from ..errors import ItemNotFound
 from ..refresh import NotifyRefused, library_roots, notify_changed
+from ..validation import warnings_for
 from .catalogue import Catalogue
 from .checks import Check
 from .evidence import (
@@ -497,15 +498,7 @@ def _top_level(path: Path, roots: Sequence[str] | None) -> tuple[str, ...]:
     """
     if not roots or not path.is_dir():
         return ()
-    parent = _normalised(path.parent)
-    for root in roots:
-        if _normalised(Path(root)) == parent:
-            return (
-                f"this folder sits directly under the library folder {root}: when "
-                "it goes, the server refreshes that whole library -- schedule it "
-                "for a quiet disk",
-            )
-    return ()
+    return tuple(warnings_for(roots, removes=[path]))
 
 
 def _same_path(catalogued: str, manifest: Path) -> bool:

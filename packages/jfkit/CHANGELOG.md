@@ -17,8 +17,9 @@ day the work was done.
   `jobs.observe()` and `jobs.LaneGate` give the same to Python callers, the
   second as a ready `before_each` for `lanes.map_by_device`.
 - **`jfkit.validation`: a change at a library's top level is said to cost a
-  whole-library validation, before it is made.** For the verbs that remove,
-  park, move or rename.
+  whole-library validation, before it is made.** `delete`, `dedupe`,
+  `leftovers sweep` and `rename` print it in the dry run: a folder parked or
+  renamed directly under a library folder, or a new top-level folder.
 - **`jfkit.healthlink`: the server's half of `mkvkit health`** -- its gate,
   and each suspect file's item id and title.
 - **`dedupe`.** Copies of one film or episode resolved into one keeper and
