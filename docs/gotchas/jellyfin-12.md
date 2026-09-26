@@ -489,6 +489,26 @@ much greater cost.
 **Confirmed.** Detached extras re-attached from folder notifications alone,
 with no full scan.
 
+### 5.6 A renumbered episode inherits the watch state of its slot
+
+**Symptom.** After a season is renumbered, an episode nobody has seen shows
+as watched -- with the play count and last-played date of the file that used
+to carry its number.
+
+**Cause.** Episode user data is found through a key made of the series and
+the season/episode slot, not only the item. A new item that lands on an old
+slot picks up whatever was recorded for that slot.
+
+**Fix.** Writing the backed-up state onto the new identifiers (5.3) is not
+enough: read every episode of the series afterwards and reset each row the
+backup does not account for. The reset cannot clear the last-played date --
+the user-data route leaves a field sent as null untouched -- so that date
+stays behind and has to be reported, not assumed gone. `jfkit userdata
+replay --scope-parent SERIES` does all of it.
+
+**Confirmed.** Seen after a renumber: the inherited rows appeared on the new
+items and went away when reset, apart from their last-played dates.
+
 ---
 
 ## 6. Search and provider routes
@@ -665,7 +685,7 @@ runtime, status, air days and air time.
 | Clear an end number | **No** -- rename only (3.3) |
 | Make a video an extra | **No** -- folder and filename only (3.9) |
 | Re-identify an item | Yes -- with images explicitly not replaced, and **before** any hand edits (2.2) |
-| Restore watch state after a path change | Yes -- write the user data back per account (5.3, 5.4) |
+| Restore watch state after a path change | Yes -- write the user data back per account, and reset what the new items inherited by slot (5.3, 5.4, 5.6) |
 | Restore a remembered audio or subtitle choice | Yes -- through a playback-progress report on a user-bound token; the indices are absolute |
 | Re-resolve one folder without a scan | Yes -- a media-updated notification naming the deepest path, or a default refresh of the folder item (4.1) |
 | Re-attach detached extras | Yes -- a folder notification naming the film's own file (5.5) |
