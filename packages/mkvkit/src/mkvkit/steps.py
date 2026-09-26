@@ -237,7 +237,13 @@ def _rename(step: Step) -> Mapping[str, Any]:
                 raise FileExistsError(f"{dst} appeared while renaming") from None
             os.rename(src, dst)
         else:
-            os.unlink(src)
+            try:
+                os.unlink(src)
+            except OSError:
+                # the old name is held open: take the new one back, so the step
+                # fails whole and a retry starts from where it started
+                os.unlink(dst)
+                raise
     else:
         os.rename(src, dst)
     return {"src": str(src), "dst": str(dst)}

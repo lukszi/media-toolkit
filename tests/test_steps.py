@@ -205,3 +205,21 @@ def test_the_verb_refuses_a_plan_with_steps_it_cannot_run(tmp_path: Path) -> Non
     saved = Plan("x", (Step("s", "userdata.write"),)).save(tmp_path / "plan.json")
     assert mkvkit_main(["steps", "apply", str(saved), "--audit",
                         str(tmp_path / "a.jsonl"), "--apply"]) == 2
+
+
+def test_a_rename_whose_source_is_held_leaves_one_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (src,) = _files(tmp_path, "a.nfo")
+    dst = tmp_path / "b.nfo"
+    real_unlink = os.unlink
+
+    def held(path: object, *args: object, **kwargs: object) -> None:
+        if Path(str(path)) == src:
+            raise PermissionError("the file is held open by another program")
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "unlink", held)
+    report = apply(Plan("rename", tuple(rename_steps([(src, dst)]))), FILE_ACTIONS)
+    assert not report.ok and "PermissionError" in (report.results[0].error or "")
+    assert src.exists() and not dst.exists()
