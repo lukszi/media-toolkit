@@ -221,3 +221,13 @@ def test_the_verb_snapshots_replays_and_verifies(
     recorder.user_data[(THIRD_USER_ID, NEW[3])] = _state(Played=True, PlayCount=1)
     assert run("userdata", "verify", str(snap), "--map", str(mapping),
                "--scope-parent", SERIES_AFTER) == 1
+
+
+def test_two_spellings_of_one_date_are_the_same_state() -> None:
+    written = UserState(played=True, play_count=1, last_played="2021-02-03T04:05:06Z")
+    read = UserState(played=True, play_count=1, last_played=DATE)
+    assert written.same_as(read)
+    assert not written.same_as(UserState(played=True, play_count=1,
+                                         last_played="2021-02-03T04:05:07.0000000Z"))
+    shifted = UserState(played=True, play_count=1, last_played="2021-02-03T06:05:06+02:00")
+    assert shifted.same_as(read)

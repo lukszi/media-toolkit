@@ -81,6 +81,30 @@ SCHEMA = 1
 WRITE = "userdata.write"
 
 
+def _instant(text: str | None) -> str | None:
+    """A server date reduced to the second, so two spellings of it compare equal.
+
+    The server writes seven fractional digits and a ``Z``; a date read back
+    through another route, or typed by hand, may carry fewer or an offset.
+    """
+    if not text:
+        return None
+    raw = text.strip().replace("Z", "+00:00")
+    main, _, rest = raw.partition(".")
+    offset = ""
+    for sign in ("+", "-"):
+        if sign in rest:
+            offset = sign + rest.split(sign, 1)[1]
+            break
+    try:
+        moment = datetime.fromisoformat(main + offset)
+    except ValueError:
+        return text
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(UTC).replace(tzinfo=None)
+    return moment.strftime("%Y-%m-%dT%H:%M:%S")
+
+
 @dataclass(frozen=True)
 class UserState:
     """One user's state for one item."""
@@ -114,7 +138,8 @@ class UserState:
         theirs = (other.played, other.play_count, other.position_ticks, other.favorite)
         if core != theirs:
             return False
-        return self.last_played is None or self.last_played == other.last_played
+        return self.last_played is None or _instant(self.last_played) == _instant(
+            other.last_played)
 
     def body(self) -> dict[str, Any]:
         """The user-data route's body; the date only when there is one to set."""
