@@ -183,8 +183,11 @@ everything again.
 **Bounded runs.** `--time-budget MIN` starts no file after that many minutes;
 the rest wait for the next run. `--subset N` reads at most N files per disk,
 spread evenly through it, and the summary projects how long every file would
-take at the pace measured. A line per disk every `--progress-every` seconds
-gives files done, files per second, the read rate and an ETA.
+take at the pace measured. `--from-state` reads no file stage 1 has not
+answered for: it reports what the state file holds and confirms its suspects,
+which is how a sweep run in parts is confirmed. A line per disk every
+`--progress-every` seconds gives files done, files per second, the read rate
+and an ETA.
 
 **Output.** The table lists every file that is not OK, worst first, with its
 evidence; `--all` adds the rest. `--json` and `--tsv` write every verdict.

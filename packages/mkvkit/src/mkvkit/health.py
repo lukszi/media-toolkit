@@ -1143,6 +1143,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[ty
     sweep_group.add_argument("--subset", type=int, metavar="N",
                              help="read at most N files per disk, spread evenly, and "
                                   "project the full run's time")
+    sweep_group.add_argument("--from-state", action="store_true",
+                             help="read no file stage 1 has not answered for: report "
+                                  "what the state file holds, and confirm its suspects")
     sweep_group.add_argument("--time-budget", type=float, metavar="MIN",
                              help="start no file after this many minutes; the rest "
                                   "wait for the next run")
@@ -1225,6 +1228,10 @@ def _health(args: argparse.Namespace, config: Config) -> int:
         exclude=args.exclude, exclude_paths=args.exclude_path, rescan=args.rescan,
         subset=args.subset,
     )
+    if args.from_state:
+        print(f"stage 1: reading nothing; {len(targets)} file(s) the state file has no "
+              "answer for are left for another run", file=sys.stderr)
+        targets = []
     counts: dict[Device, int] = {}
     for result in unchanged:
         counts[result.device] = counts.get(result.device, 0) + 1

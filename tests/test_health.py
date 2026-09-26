@@ -581,3 +581,27 @@ def test_the_scan_gate_is_built_from_the_configuration() -> None:
     built.on_hold("/srv", Gate("/srv", reasons=("[lock] held",),
                                signals=(Signal("lock", "held"),)))
     assert waits == [("/srv", "RED by lock: [lock] held")]
+
+
+@pytest.mark.needs_ffmpeg
+def test_from_state_reads_nothing_new_and_confirms_what_the_sweep_found(
+    library: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = tmp_path / "state.jsonl"
+    common = ["--gate", "off", "--state", str(state), "--blocks", "16", "--block-kib", "16",
+              "--exclude", "*.mp4"]
+    assert mkvkit_cli.main(["health", str(library["root"]), *common, "--no-confirm"]) == 1
+    capsys.readouterr()
+    fresh = library["root"] / "Harbour Lights" / "Harbour Lights - S01E04.mkv"
+    shutil.copyfile(library["healthy"], fresh)
+    report = tmp_path / "health.json"
+    assert mkvkit_cli.main([
+        "health", str(library["root"]), *common, "--from-state", "--confirm", "1",
+        "--json", str(report),
+    ]) == 1
+    err = capsys.readouterr().err
+    assert "1 file(s) the state file has no answer for" in err
+    assert "stage 2: confirming 1 of 2 suspect(s)" in err
+    document = json.loads(report.read_text(encoding="utf-8"))
+    assert document["counts"] == {OK: 1, SUSPECT: 1, CORRUPT: 1, UNREADABLE: 0}
+    assert fresh.name not in {Path(r["path"]).name for r in document["results"]}
