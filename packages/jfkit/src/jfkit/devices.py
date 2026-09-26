@@ -11,8 +11,10 @@ Paths landed in the wrong lane, two heavy readers ran on one disk,
 and the machine became unusable until one of them finished.
 
 So a path is resolved to its mount point or volume root first, and that is
-what is compared. The lesson generalises past this module: never key a
-decision on a string somebody else formatted.
+what is compared. That resolution lives in :mod:`mkvkit.devices`, so the file
+side groups work by the same answer, and is re-exported here. The lesson
+generalises past this module: never key a decision on a string somebody
+else formatted.
 
 Whether the device is a spinning disk is a different question and an honest
 ``None`` where it cannot be answered. It can be read on one platform and not
@@ -25,49 +27,18 @@ unknown device as one that needs protecting, which is the safe direction.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sys
 from pathlib import Path, PurePath
+
+from mkvkit.devices import Device, device_of, same_device
 
 __all__ = ["Device", "device_of", "is_rotational", "mentions_device", "same_device"]
 
 log = logging.getLogger(__name__)
 
-#: A device is named by its mount point or volume root, normalised. It is a
-#: string rather than a number because the number is not stable across
-#: platforms and the mount point is what a person recognises.
-Device = str
-
 #: Where a platform records whether a block device spins. Absent elsewhere.
 ROTATIONAL = "/sys/block/{name}/queue/rotational"
-
-
-def device_of(path: Path | str) -> Device:
-    """The mount point or volume root that backs this path.
-
-    Resolved rather than parsed: a relative path, a link, or a path that does
-    not exist yet all answer with the device the write would land on.
-    """
-    here = Path(path).expanduser()
-    try:
-        here = here.resolve()
-    except OSError:  # pragma: no cover - a path that cannot be resolved at all
-        here = here.absolute()
-
-    if os.name == "nt":
-        anchor = here.anchor
-        return anchor.rstrip("\\/").upper() or str(here)
-
-    candidate = here
-    while not os.path.ismount(candidate) and candidate != candidate.parent:
-        candidate = candidate.parent
-    return str(candidate)
-
-
-def same_device(a: Path | str, b: Path | str) -> bool:
-    """Whether two paths would be served by the same disk."""
-    return device_of(a) == device_of(b)
 
 
 def is_rotational(device: Device) -> bool | None:
