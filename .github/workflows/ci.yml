@@ -101,9 +101,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The oldest Python the packages support, which is also the version the
+      # type checker checks for. pip then installs the numpy a 3.11 user gets,
+      # whose stubs that version can read; a newer interpreter brings a numpy
+      # whose stubs use syntax 3.11 does not have.
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.12"
+          python-version: "3.11"
       # Pinned: a new release of either one is a change to the gate, and it
       # arrives as a commit rather than as a red build nobody caused.
       - run: pip install ruff==0.15.0 mypy==1.19.1
