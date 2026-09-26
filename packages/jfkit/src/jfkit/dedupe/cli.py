@@ -236,7 +236,8 @@ def _run(plan: Plan, args: argparse.Namespace, config: Config, rules: Rules) -> 
     client = client_from(args, config)
     report = apply(
         plan,
-        actions(client, keeper_check=default_checker(rules.dedupe.apply_keeper_check)),
+        actions(client, keeper_check=default_checker(rules.dedupe.apply_keeper_check,
+                                                      config=config)),
         audit=args.audit,
     )
     print(report)
@@ -269,7 +270,8 @@ def _dedupe(args: argparse.Namespace, config: Config) -> int:
     scan = find_groups(items)
     log.info("%d group(s) from %d row(s)", len(scan.groups), scan.items_seen)
 
-    verdicts = resolve(scan.groups, rules, before_each=_gate(args, config, reader))
+    verdicts = resolve(scan.groups, rules, before_each=_gate(args, config, reader),
+                       config=config)
     parked = args.parked or config.paths.parked or DEFAULT_PARKED
     planned = build_plan(reader, verdicts, parked=parked, workers=args.jobs)
     if planned.unplanned:

@@ -863,7 +863,7 @@ def test_the_verb_dry_runs_writes_reports_and_applies(
 
     copies = _copies_for(library)
     monkeypatch.setattr(resolve_module, "probe_copy",
-                        lambda m, _policy: replace(copies[m.path], member=m))
+                        lambda m, _policy, **_: replace(copies[m.path], member=m))
     monkeypatch.setattr(resolve_module.integrity, "check",
                         lambda path, **_: _plays(path))
     _url, recorder = server
@@ -901,10 +901,42 @@ def test_the_verb_exits_one_when_a_group_is_blocked(
 
     copies = _copies_for(library)
     monkeypatch.setattr(resolve_module, "probe_copy",
-                        lambda m, _policy: replace(copies[m.path], member=m))
+                        lambda m, _policy, **_: replace(copies[m.path], member=m))
     monkeypatch.setattr(
         resolve_module.integrity, "check",
         lambda path, **_: IntegrityReport(path=Path(path), problems=("empty",)))
     assert jfkit_cli.main(["--config", str(configured), "dedupe", "--no-gate"]) == 1
     printed = capsys.readouterr().out
     assert "1 BLOCKED" in printed and "0 step(s)" in printed
+
+
+def test_the_configured_programs_read_every_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``[tools]`` names the probe program; the resolver must not look past it."""
+    from jfkit.dedupe import facts as facts_module
+    from jfkit.dedupe import resolver as resolve_module
+    from mkvkit.config import Config
+
+    config = Config()
+    seen: list[object] = []
+    one, two = tmp_path / "one.mkv", tmp_path / "two.mkv"
+    for path in (one, two):
+        path.write_bytes(b"x")
+
+    def probed(_path: Path, **kwargs: Any) -> dict[str, Any]:
+        seen.append(kwargs.get("config"))
+        return {"format": {"duration": "5400"},
+                "streams": [{"codec_type": "audio", "codec_name": "ac3", "channels": 6,
+                             "tags": {"language": "eng"}}]}
+
+    def checked(path: Path, **kwargs: Any) -> IntegrityReport:
+        seen.append(kwargs.get("config"))
+        return _plays(path)
+
+    monkeypatch.setattr(facts_module, "ffprobe_json", probed)
+    monkeypatch.setattr(resolve_module.integrity, "check", checked)
+    rows = [movie_row(i, "The Quiet Harbour", str(p)) for i, p in enumerate((one, two), 1)]
+    (verdict,) = resolve(find_groups(rows).groups, RULES, config=config)
+    assert verdict.verdict == SAFE
+    assert seen == [config, config, config]

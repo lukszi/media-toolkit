@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mkvkit.config import DedupePolicy
+from mkvkit.config import Config, DedupePolicy
 from mkvkit.langcodes import canonical
 from mkvkit.probe import ffprobe_json
 from mkvkit.run import Runner
@@ -320,7 +320,8 @@ Prober = Callable[[Member], Copy]
 
 
 def probe_copy(
-    member: Member, policy: DedupePolicy, *, runner: Runner | None = None
+    member: Member, policy: DedupePolicy, *, runner: Runner | None = None,
+    config: Config | None = None,
 ) -> Copy:
     """Read one member's file: its headers and its external subtitle files.
 
@@ -334,6 +335,6 @@ def probe_copy(
             "and its group is left for a person"
         )
     size = path.stat().st_size
-    probed = ffprobe_json(path, runner=runner, chapters=False)
+    probed = ffprobe_json(path, runner=runner, config=config, chapters=False)
     return copy_from_probe(member, probed, policy, size=size,
                            external=external_subtitles(path))

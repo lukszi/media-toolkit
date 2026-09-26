@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from mkvkit import integrity
+from mkvkit.config import Config
 from mkvkit.devices import Device, device_of
 from mkvkit.integrity import IntegrityReport
 from mkvkit.lanes import map_by_device
@@ -51,14 +52,15 @@ Checker = Callable[[Path], IntegrityReport]
 BeforeEach = Callable[[Device, Any], None]
 
 
-def default_checker(mode: str = "full") -> Checker:
+def default_checker(mode: str = "full", *, config: Config | None = None) -> Checker:
     """The payload check: ``full`` decodes every track, ``quick`` lists every packet.
 
-    Looked up when called, so a test that replaces :func:`mkvkit.integrity.check`
-    replaces it here too.
+    The programs are found through ``config``'s ``[tools]``. Looked up when
+    called, so a test that replaces :func:`mkvkit.integrity.check` replaces it
+    here too.
     """
     def run(path: Path) -> IntegrityReport:
-        return integrity.check(path, decode=mode == "full")
+        return integrity.check(path, decode=mode == "full", config=config)
     return run
 
 
@@ -109,10 +111,15 @@ def resolve(
     checker: Checker | None = None,
     device_of: Callable[[Path | str], Device] = device_of,
     before_each: BeforeEach | None = None,
+    config: Config | None = None,
 ) -> list[Verdict]:
-    """A verdict for every group, in the order given."""
-    probe = prober or (lambda member: probe_copy(member, rules.dedupe))
-    check = checker or default_checker(rules.dedupe.keeper_check)
+    """A verdict for every group, in the order given.
+
+    ``config`` names the programs (``[tools]``) the default probe and payload
+    check run; ``prober`` and ``checker`` replace them.
+    """
+    probe = prober or (lambda member: probe_copy(member, rules.dedupe, config=config))
+    check = checker or default_checker(rules.dedupe.keeper_check, config=config)
 
     members = [m for g in groups if g.not_duplicate is None for m in g.members]
     probed = map_by_device(
