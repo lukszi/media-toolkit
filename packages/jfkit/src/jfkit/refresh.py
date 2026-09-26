@@ -54,6 +54,7 @@ __all__ = [
     "NotifyRefused",
     "RefreshReport",
     "apply_identity",
+    "library_roots",
     "nfo_guard",
     "notify_changed",
     "request_refresh",
@@ -208,6 +209,27 @@ def safe_refresh(
 
 
 # ----------------------------------------------------------------- the nudge
+def library_roots(client: Client) -> list[str] | None:
+    """Every folder of every library the server has, or None if it would not say.
+
+    The roots a configuration names are the ones somebody remembered; a
+    library added later, or one on another volume, is a root all the same,
+    and notifying it is the same full scan. None means the list could not be
+    read, which a caller must treat as "do not notify", never as "no roots".
+    """
+    try:
+        found = client.get("/Library/VirtualFolders")
+    except Exception:  # unreadable: the caller does not notify at all
+        return None
+    if not isinstance(found, list):
+        return None
+    roots: list[str] = []
+    for library in found:
+        if isinstance(library, dict):
+            roots += [str(p) for p in library.get("Locations") or []]
+    return roots
+
+
 def notify_changed(
     client: Client,
     paths: Iterable[Path | str],

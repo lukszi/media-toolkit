@@ -101,6 +101,19 @@ day the work was done.
   that name exists (unless `replace=True`), creates without `/F`, and then
   starts it with `/Run`. `launch_detached()` returns the list of commands;
   `detached_commands()` is new.
+- **`notify` refuses every library root the server has.** It knew only the
+  two folders in `[paths]` and any `--root`, so a library on another volume,
+  or one added later, could be notified whole -- a full scan. It now reads
+  every library's folders from the server first, as `delete` already did,
+  and sends nothing when they cannot be read. `refresh.library_roots()` is
+  new.
+- **`item show --save` keeps stdout for the record.** The "written to" line
+  went to stdout ahead of the JSON, so a pipe into a JSON reader failed on
+  its first line. It goes to stderr now.
+- **`item set` reports the fields it changes, not the record that carries
+  them.** Each phase prints and logs `Field: was -> now`; the dry run logs a
+  body over a kilobyte by its size and prints it whole with `-v`, where it
+  used to put the whole record on one line at the default level.
 - **A refused request closes its response.** Every error status left the
   server's response open until the garbage collector found it, one per
   refusal and one per retry. It is read and closed where it is caught.

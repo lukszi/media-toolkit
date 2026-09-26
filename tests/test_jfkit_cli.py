@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from jfkit import cli as jfkit_cli
+from jfkit import client as jfkit_client
 from jfkit.commands import REGISTRARS, _fields_from
 
 from tests.fake_server import (
@@ -118,8 +119,9 @@ def test_showing_an_item_prints_the_whole_record(
 ) -> None:
     assert run(configured, "item", "show", FIRST, "--save",
                str(tmp_path / "before.json")) == 0
-    printed = capsys.readouterr().out
-    assert json.loads(printed[printed.index("{"):])["Id"] == FIRST
+    printed = capsys.readouterr()
+    assert json.loads(printed.out)["Id"] == FIRST, "stdout is the record alone"
+    assert "written to" in printed.err
     assert (tmp_path / "before.json").is_file()
 
 
@@ -167,6 +169,36 @@ def test_a_dry_run_set_sends_nothing(
     assert run(configured, "item", "set", FIRST, "--field", "Name=Blue Canyon") == 0
     assert recorder.posted == []
     assert "dry run" in capsys.readouterr().out
+
+
+def test_a_dry_run_set_reports_the_field_and_not_the_record(
+    configured: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A one-field change is reported as that field, before and after.
+
+    The body the dry run would send is the whole record, several kilobytes on
+    one line on a real server; above the limit it is summarised by its size.
+    The fixture record is small, so the limit is lowered to meet it.
+    """
+    monkeypatch.setattr(jfkit_client, "DRY_RUN_BODY_LIMIT", 16)
+    assert run(configured, "item", "set", FIRST,
+               "--field", "ParentIndexNumber=1") == 0
+    printed = capsys.readouterr()
+    assert "ParentIndexNumber: null -> 1" in printed.out
+    assert "ParentIndexNumber: null -> 1" in printed.err
+    assert "-v prints it" in printed.err
+    assert f'"Id": "{FIRST}"' not in printed.err
+
+
+def test_the_whole_dry_run_body_is_one_verbosity_level_away(
+    configured: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(jfkit_client, "DRY_RUN_BODY_LIMIT", 16)
+    assert run(configured, "-v", "item", "set", FIRST,
+               "--field", "ParentIndexNumber=1") == 0
+    assert f'"Id": "{FIRST}"' in capsys.readouterr().err
 
 
 def test_apply_is_what_sends_it(
@@ -282,6 +314,34 @@ def test_notifying_a_library_root_is_refused_with_an_exit_code(
     _url, recorder = server
     assert run(configured, "notify", "/srv/media/movies", "--apply") == 2
     assert "library root" in capsys.readouterr().out
+    assert recorder.notifications == []
+
+
+def test_a_library_root_only_the_server_knows_is_refused_too(
+    configured: Path, server: tuple[str, Recorder],
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A library nobody put in the configuration is a root all the same."""
+    _url, recorder = server
+    recorder.virtual_folders = [
+        {"Name": "Documentaries", "Locations": ["/srv/other/documentaries"]},
+    ]
+    assert run(configured, "notify", "/srv/other/documentaries", "--apply") == 2
+    assert run(configured, "notify", "/srv/other", "--apply") == 2
+    assert "library root" in capsys.readouterr().out
+    assert recorder.notifications == []
+
+
+def test_a_notification_is_not_sent_when_the_libraries_cannot_be_listed(
+    configured: Path, server: tuple[str, Recorder],
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    _url, recorder = server
+    recorder.virtual_folders_status = 500
+    assert run(configured, "notify",
+               "/srv/media/movies/The Quiet Harbour (1978)/the-quiet-harbour.mkv",
+               "--apply") == 2
+    assert "could not be read" in capsys.readouterr().out
     assert recorder.notifications == []
 
 

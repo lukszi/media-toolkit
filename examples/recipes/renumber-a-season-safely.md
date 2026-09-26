@@ -101,7 +101,7 @@ jfkit notify "/srv/media/series/Harbour Lights/Season 01" --apply
 Naming the *library root* here would not be a notification. It would be a full
 validation of everything below it, which on a large collection is hours of
 disk, and it is how an accidental full scan starts. The command refuses any
-path that is a configured root or above one:
+path that is a library folder the server lists, or above one:
 
 ```
 $ jfkit notify /srv/media/series --apply

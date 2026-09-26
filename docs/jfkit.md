@@ -42,11 +42,13 @@ warning.
 
 **Writing is asked for twice.** Every command that changes anything takes
 `--dry-run`, which is the default, and `--apply`. In the dry run every
-mutating request is logged in full -- method, address and body, with any
+mutating request is logged -- method, address and body, with any
 credential-looking value in the body replaced by `<redacted>` -- and not sent,
 so a whole pipeline can be run against a real server and produce a complete
-account of what it *would* do. There is no third state and no environment
-variable that flips it.
+account of what it *would* do. A body over a kilobyte -- a whole item record,
+say -- is summarised by its size and printed whole with `-v`; `item set`
+reports the fields it changes, before and after, on its own. There is no third
+state and no environment variable that flips it.
 
 **An applied write to a server record keeps a rollback.** Three verbs refuse
 `--apply` until they are told where to put the state they are about to
@@ -214,8 +216,10 @@ Two guards live here and both cost real time to learn:
 
 `jfkit notify` is the narrow nudge: tell the server that one file changed
 instead of asking it to walk a library. It refuses any path that is a
-configured library root, or above one, because that is not a notification --
-it is a full validation of everything below it.
+library root, or above one, because that is not a notification -- it is a full
+validation of everything below it. The roots are every folder of every library
+the server lists, plus the two in `[paths]` and any `--root`; when the server
+will not list its libraries, nothing is sent.
 
 ## `jfkit.libopts` -- the options the document leaves out
 

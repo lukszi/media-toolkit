@@ -59,7 +59,7 @@ from typing import Any
 from ..client import Client
 from ..dto import every_user, fetch, user_data
 from ..errors import ItemNotFound
-from ..refresh import NotifyRefused, notify_changed
+from ..refresh import NotifyRefused, library_roots, notify_changed
 from .evidence import FolderContents, Identity, folder_contents, identical, media_free
 
 __all__ = [
@@ -566,7 +566,7 @@ def _let_the_row_go(client: Client, candidate: Candidate) -> tuple[bool, str]:
     path notification makes the server look at the path, find nothing there,
     and drop the row itself -- and a scan deletes no files.
     """
-    roots = _library_roots(client)
+    roots = library_roots(client)
     if roots is None:
         return False, (
             "row left for a scheduled scan: the library folders could not be read, "
@@ -584,19 +584,6 @@ def _let_the_row_go(client: Client, candidate: Candidate) -> tuple[bool, str]:
         "the server was told the path is gone; the row goes when its scan gets "
         "there, and nothing on disk is touched by that"
     )
-
-
-def _library_roots(client: Client) -> list[str] | None:
-    """Every configured library folder, so a notification never names one."""
-    try:
-        found = client.get("/Library/VirtualFolders")
-    except Exception:  # unreadable: the caller does not notify at all
-        return None
-    roots: list[str] = []
-    for library in found if isinstance(found, list) else []:
-        if isinstance(library, dict):
-            roots += [str(p) for p in library.get("Locations") or []]
-    return roots
 
 
 @dataclass

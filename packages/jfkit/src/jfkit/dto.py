@@ -43,6 +43,7 @@ file has marks and no names for them.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import logging
 import re
@@ -147,10 +148,28 @@ class Phase:
 
     name: str
     fields: Mapping[str, Any] = field(default_factory=dict)
+    #: what each named field held when the phase was sent, filled in by
+    #: :func:`update_item`; empty for a plan that has not run
+    before: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def is_refresh(self) -> bool:
         return self.name == "refresh"
+
+    def changes(self) -> list[str]:
+        """One ``Field: was -> now`` line per field, in JSON spelling.
+
+        This is what a one-field edit is about, and it is what gets reported:
+        the body that carries it is the whole record.
+        """
+        def shown(value: Any) -> str:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+        return [
+            f"{key}: {shown(self.before.get(key))} -> {shown(value)}"
+            + ("  (unchanged)" if self.before.get(key) == value else "")
+            for key, value in sorted(self.fields.items())
+        ]
 
     def __str__(self) -> str:
         if self.is_refresh:
@@ -320,22 +339,28 @@ def update_item(
         fields, item_type=current.get("Type"), refresh=refresh is not None
     ) if phase_order else [Phase("all", dict(fields))]
 
+    ran: list[Phase] = []
     for phase in plan:
         if phase.is_refresh:
+            ran.append(phase)
             if refresh is None:  # pragma: no cover - guarded by phases_for
                 continue
             log.info("%s: refresh between phases", item_id)
             refresh(item_id)
             current = fetch(client, item_id)
             continue
+        phase = dataclasses.replace(
+            phase, before={key: current.get(key) for key in phase.fields}
+        )
+        ran.append(phase)
         body = copy.deepcopy(current)
         for block in STRIP_BEFORE_POST:
             body.pop(block, None)
         body.update(phase.fields)
-        log.info("%s: %s", item_id, phase)
+        log.info("%s: %s phase: %s", item_id, phase.name, "; ".join(phase.changes()))
         client.post(f"/Items/{item_id}", body)
         current = body
-    return plan
+    return ran
 
 
 # ----------------------------------------------------------------- comparing

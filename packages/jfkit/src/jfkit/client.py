@@ -22,8 +22,9 @@ user-scoped route returns everything, so it is the default, and asking for the
 unscoped one is an explicit act.
 
 **Writes are opt-in.** A client is constructed in dry-run mode. In that state
-every mutating request is logged, in full -- body included, with any
-credential-looking value in it replaced -- and not sent, so a pipeline can be
+every mutating request is logged -- body included, with any
+credential-looking value in it replaced; a body over a kilobyte is summarised
+by its size and printed whole with ``-v`` -- and not sent, so a pipeline can be
 run end to end against a real server and produce a complete account of what it
 *would* do, which is the only kind of dry run worth having. ``--apply`` builds
 a client with ``dry_run=False``. There is no third state.
@@ -70,12 +71,18 @@ IDEMPOTENT = frozenset({"GET", "HEAD"})
 SECRET_KEY = re.compile(r"token|password|passwd|secret|api_?key|credential", re.I)
 REDACTED = "<redacted>"
 
+#: A dry-run body longer than this many characters is summarised by its size
+#: at the default level and logged whole one level down (``-v``). A whole item
+#: record is several kilobytes on one line, and the change it carries is
+#: usually one field, which the caller reports on its own.
+DRY_RUN_BODY_LIMIT = 1024
+
 
 def redacted(body: Any) -> Any:
     """A copy of a body with every credential-looking value replaced.
 
-    The dry run logs each write's body in full, which is what makes it an
-    account of what would happen; a body that carries a credential -- a
+    The dry run logs each write's body, which is what makes it an account of
+    what would happen; a body that carries a credential -- a
     plugin configuration with an API key in it, say -- must not put it in a
     log file on the way. The token the client itself holds is never in a
     body, and the logging filter hides it anyway once it has been resolved.
@@ -170,11 +177,18 @@ class Client:
         """One request, with the retry policy and the dry-run gate applied."""
         url = self._url(route, params)
         if method not in IDEMPOTENT and self.dry_run:
-            log.info(
-                "dry run: would %s %s%s", method, url,
-                "" if body is None else " with body "
-                + json.dumps(redacted(body), ensure_ascii=False, sort_keys=True),
-            )
+            if body is None:
+                log.info("dry run: would %s %s", method, url)
+                return None
+            shown = json.dumps(redacted(body), ensure_ascii=False, sort_keys=True)
+            if len(shown) <= DRY_RUN_BODY_LIMIT:
+                log.info("dry run: would %s %s with body %s", method, url, shown)
+            else:
+                log.info(
+                    "dry run: would %s %s with a body of %d characters "
+                    "(-v prints it)", method, url, len(shown),
+                )
+                log.debug("dry run: the body for %s %s: %s", method, url, shown)
             return None
 
         data = None if body is None else json.dumps(body).encode("utf-8")

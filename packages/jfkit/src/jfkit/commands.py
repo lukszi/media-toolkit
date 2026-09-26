@@ -11,7 +11,7 @@ The two properties are the file-side entry point's, unchanged.
 **Reading is free; writing is asked for twice.** Every verb that changes
 anything takes ``--dry-run``, which is the default, and ``--apply``. There is
 no third state and no environment variable that flips it. The switch builds
-the client: a dry-run client logs every write in full and sends none of them,
+the client: a dry-run client logs every write and sends none of them,
 so a whole pipeline can be run against a real server and produce a complete
 account of what it would do.
 
@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -158,7 +159,9 @@ def _register_item(subparsers: argparse._SubParsersAction) -> None:  # type: ign
 def _item_show(args: argparse.Namespace, config: Config) -> int:
     record = fetch(client_from(args, config), args.item_id)
     if args.save:
-        print(f"written to {save(record, args.save)}")
+        # stdout is the record and nothing else, so it can be piped into a
+        # JSON reader whether or not a copy was saved
+        print(f"written to {save(record, args.save)}", file=sys.stderr)
     print(json.dumps(record, ensure_ascii=False, indent=1, sort_keys=True))
     return 0
 
@@ -174,6 +177,8 @@ def _item_set(args: argparse.Namespace, config: Config) -> int:
     )
     for phase in phases:
         print(f"  {phase}")
+        for change in phase.changes():
+            print(f"      {change}")
     print("nothing was sent: this was a dry run" if client.dry_run else "applied")
     return 0
 
@@ -228,7 +233,16 @@ def _register_notify(subparsers: argparse._SubParsersAction) -> None:  # type: i
 
 def _notify(args: argparse.Namespace, config: Config) -> int:
     client = client_from(args, config)
-    roots = list(args.root) + [
+    # Every folder of every library the server has, not only the two the
+    # configuration names: a root nobody wrote down starts the same full scan.
+    served = refresh_module.library_roots(client)
+    if served is None:
+        print(
+            "the server's library folders could not be read, so it cannot be "
+            "shown that none of these paths is one. Nothing was sent."
+        )
+        return 2
+    roots = list(args.root) + served + [
         str(p) for p in (config.paths.movies, config.paths.series) if p
     ]
     try:

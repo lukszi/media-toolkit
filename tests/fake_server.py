@@ -175,6 +175,8 @@ class Recorder:
         {"Id": THIRD_USER_ID, "Name": "third-fixture-user"},
     ])
     users_status: int | None = None
+    #: a status to answer the library list with instead of the list
+    virtual_folders_status: int | None = None
     #: folders an item delete removed from disk, as the real route does
     folders_deleted: list[str] = field(default_factory=list)
     #: rows a deleted-path notification dropped because their file was gone
@@ -242,7 +244,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, self.recorder.scheduled_tasks)
             return
         if route == "/Library/VirtualFolders":
-            self._send(200, self.recorder.virtual_folders)
+            if self.recorder.virtual_folders_status is not None:
+                self._send(self.recorder.virtual_folders_status, {"error": "not now"})
+            else:
+                self._send(200, self.recorder.virtual_folders)
             return
         if route == "/Sessions":
             self._send(200, self.recorder.sessions)

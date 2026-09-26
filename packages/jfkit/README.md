@@ -38,7 +38,7 @@ nothing about the difference. An audit built on it under-reports silently.
 
 **Writing is asked for twice.** Every command that changes anything takes
 `--dry-run`, which is the default, and `--apply`. In the dry run every
-mutating request is logged in full and not sent, so a whole pipeline can be
+mutating request is logged and not sent, so a whole pipeline can be
 run against a real server and produce a complete account of what it would do.
 
 ## Start here
