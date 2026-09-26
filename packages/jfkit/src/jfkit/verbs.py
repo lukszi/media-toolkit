@@ -258,7 +258,14 @@ def _userdata_verify(args: argparse.Namespace, config: Config) -> int:
     return 0 if checked.ok else 1
 
 
+def _register_dedupe(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    from .dedupe.cli import register
+
+    register(subparsers)
+
+
 REGISTRARS = {
+    "dedupe": _register_dedupe,
     "find": _register_find,
     "children": _register_children,
     "playstate": _register_playstate,
