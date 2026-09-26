@@ -153,6 +153,75 @@ before removing anything else that depends on it. Every report says so.
 
 ---
 
+## `mkvkit.sidecars` -- everything that belongs to a video
+
+A video in a library is rarely one file. Rename, move or park it alone and
+its metadata, pictures, subtitles and preview tiles stay behind, attached to
+nothing. `mkvkit sidecars` lists what has to go with it, and reads nothing
+but directory listings:
+
+```
+mkvkit sidecars "/srv/media/series/Northwind/Northwind - S01E03 - The Quiet Harbour.mkv"
+mkvkit sidecars /srv/media/series/Northwind --json
+```
+
+A file belongs to a video when its name starts with the video's name without
+the extension (the *stem*, compared without regard to case) followed by `.`
+or `-`. What follows the stem is kept by a rename. Each sidecar has a kind:
+
+| kind | what | read by the server |
+|---|---|---|
+| `trickplay` | the `<stem>.trickplay` folder of preview tiles | yes |
+| `nfo` | `<stem>.nfo` | yes |
+| `image` | `<stem>.jpg`, `<stem>-thumb.jpg`, `-poster`, `-fanart`, ... in any picture format, and `metadata/<stem>.jpg` | the names the image providers know |
+| `subtitle` | `.srt`, `.ass`, `.ssa`, `.vtt`, `.sup`, `.sub`/`.idx`, ... | only as `<stem>.<flags>.<ext>` -- the dot is the only flag delimiter |
+| `audio` | `.mka`, `.ac3`, `.dts`, ... | same rule as subtitles |
+| `chapters` | `<stem>...xml` | no |
+| `other` | anything else named after the video: `.txt`, `.ttml`, `.edl` | no |
+
+Another video is never a sidecar, and a file belongs to exactly one video:
+the one with the longest stem that claims it, so
+`Harbour.Lights.S01E02.German.DL.srt` goes with
+`Harbour.Lights.S01E02.German.DL.mkv` and not with
+`Harbour.Lights.S01E02.mkv`. A folder listing also reports the files that
+belong to no video (`unclaimed`).
+
+The library side: `sidecars_of(video, listing=None) -> SidecarSet`,
+`sidecars_in_folder(folder) -> FolderSidecars`, `planned_renames(video,
+new_video)` (the video first, then every sidecar, each with its target), and
+`FolderListing.read(folder)` to list a folder once for many videos.
+
+---
+
+## `mkvkit.walk` -- a tree, without wandering off it
+
+On Windows a junction is a directory that `os.path.islink` says is not a
+link, so a plain walk descends into it and an inventory of one disk quietly
+becomes an inventory of another. `mkvkit.walk.walk()` does not enter a
+symbolic link, a junction or any other directory reparse point, and reports
+each one it left out, with anything excluded and any folder it could not
+list:
+
+```
+mkvkit walk /srv/media/series --exclude Extras --exclude "*.partial" --json
+```
+
+`walk(root, exclude=(), exclude_paths=(), follow_links=False,
+include_dirs=False, suffixes=None, sizes=True, on_skip=None)` returns a lazy
+`Walk`: iterate it for `Entry(path, relative, is_dir, size, link)`, then read
+`walk.skipped`, a list of `Skipped(path, reason, detail)` with the reasons
+`symlink`, `junction`, `reparse-point`, `excluded`, `loop` and `error`.
+Patterns match an entry's name or its `/`-separated path relative to the root.
+With `follow_links=True` every directory is entered once, by device and
+inode, so a loop ends. `is_link_or_junction(path)` is the single check.
+
+It lists each directory once with `os.scandir`. On Windows the listing
+already carries attributes, reparse tag and size, so it needs no further
+calls. Elsewhere a size costs one `lstat` per file, which `sizes=False`
+saves.
+
+---
+
 ## `mkvkit.probe` -- read the file once, with both programs
 
 Two programs can describe a media file and they describe different things.

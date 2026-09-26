@@ -796,6 +796,87 @@ def _copy(args: argparse.Namespace, _config: Config) -> int:
     return 0 if report.ok else 1
 
 
+def _register_sidecars(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    parser = subparsers.add_parser(
+        "sidecars", help="list every file that belongs to a video (reads only)",
+        description="For each video, the files a rename or a move has to carry "
+                    "with it: metadata, pictures, subtitles, preview tiles. A "
+                    "folder lists every video in it, and the files that belong "
+                    "to none.",
+    )
+    parser.add_argument("paths", nargs="+", type=Path, metavar="PATH",
+                        help="a video, or a folder of videos")
+    parser.add_argument("--json", action="store_true", help="one JSON document")
+    parser.set_defaults(handler=_sidecars)
+
+
+def _sidecars(args: argparse.Namespace, _config: Config) -> int:
+    from . import sidecars as sidecars_module
+
+    sets: list[sidecars_module.SidecarSet] = []
+    unclaimed: list[Path] = []
+    for path in args.paths:
+        if path.is_dir():
+            found = sidecars_module.sidecars_in_folder(path)
+            sets += found.sets.values()
+            unclaimed += found.unclaimed
+        else:
+            sets.append(sidecars_module.sidecars_of(path))
+    if args.json:
+        print(json.dumps(
+            {"sets": [s.as_dict() for s in sets],
+             "unclaimed": [str(p) for p in unclaimed]},
+            ensure_ascii=False, indent=1,
+        ))
+        return 0
+    for found_set in sets:
+        print(f"{found_set.video}")
+        for sidecar in found_set:
+            read = "" if sidecar.read_by_server else "  (not read by the server)"
+            print(f"  {sidecar.kind.value:<9} {sidecar.path.name}{read}")
+    for path in unclaimed:
+        print(f"unclaimed  {path}")
+    return 0
+
+
+def _register_walk(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    parser = subparsers.add_parser(
+        "walk", help="list a tree without following links or junctions (reads only)",
+    )
+    parser.add_argument("root", type=Path)
+    parser.add_argument("--exclude", action="append", default=[], metavar="GLOB",
+                        help="skip names or relative paths matching this; repeatable")
+    parser.add_argument("--exclude-path", action="append", default=[], type=Path,
+                        metavar="PATH", help="skip this path; repeatable")
+    parser.add_argument("--follow-links", action="store_true",
+                        help="enter links and junctions too, once each")
+    parser.add_argument("--suffix", action="append", default=None, metavar=".EXT",
+                        help="only files with this extension; repeatable")
+    parser.add_argument("--json", action="store_true", help="one JSON object per line")
+    parser.set_defaults(handler=_walk)
+
+
+def _walk(args: argparse.Namespace, _config: Config) -> int:
+    from .walk import walk
+
+    tree = walk(args.root, exclude=args.exclude, exclude_paths=args.exclude_path,
+                follow_links=args.follow_links, suffixes=args.suffix)
+    for entry in tree:
+        if args.json:
+            print(json.dumps({"path": str(entry.path), "size": entry.size},
+                             ensure_ascii=False))
+        else:
+            print(f"{entry.size if entry.size is not None else '-':>14}  {entry.path}")
+    for skipped in tree.skipped:
+        if args.json:
+            print(json.dumps({"skipped": str(skipped.path),
+                              "reason": skipped.reason.value,
+                              "detail": skipped.detail}, ensure_ascii=False))
+        else:
+            print(skipped)
+    return 0
+
+
 def _no_verb(args: argparse.Namespace, _config: Config) -> int:
     args._parser.print_help()
     return 2
@@ -813,4 +894,6 @@ REGISTRARS = {
     "remux": _register_remux,
     "swap": _register_swap,
     "copy": _register_copy,
+    "sidecars": _register_sidecars,
+    "walk": _register_walk,
 }
