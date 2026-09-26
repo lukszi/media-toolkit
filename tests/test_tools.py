@@ -9,6 +9,7 @@ resolution order, not ffmpeg.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from collections.abc import Iterator
@@ -89,6 +90,28 @@ def test_a_resolution_is_cached() -> None:
 def test_search_locations_only_returns_directories_that_exist() -> None:
     for directory in search_locations("ffmpeg"):
         assert directory.is_dir()
+
+
+def test_a_resolution_is_logged_with_its_version(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="mkvkit.tools"):
+        find_tool("ffprobe", config=_config(ffprobe=str(INTERPRETER)), environ={})
+    assert "from the [tools] entry" in caplog.text
+    assert tool_version(INTERPRETER) in caplog.text
+
+
+def test_a_resolution_that_nobody_logs_does_not_start_the_program(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: list[Path] = []
+    monkeypatch.setattr("mkvkit.tools.tool_version", started.append)
+    logging.getLogger("mkvkit.tools").setLevel(logging.WARNING)
+    try:
+        find_tool("ffprobe", config=_config(ffprobe=str(INTERPRETER)), environ={})
+    finally:
+        logging.getLogger("mkvkit.tools").setLevel(logging.NOTSET)
+    assert started == []
 
 
 def test_tool_version_reads_a_line() -> None:

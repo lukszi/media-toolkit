@@ -179,7 +179,9 @@ def _accept(
 ) -> Path:
     resolved = path.resolve()
     _CACHE[key] = resolved
-    log.info("%s: %s (from the %s), %s", name, resolved, source, tool_version(resolved))
+    # Asking for the version starts the program; only do it for a log that is kept.
+    if log.isEnabledFor(logging.INFO):
+        log.info("%s: %s (from the %s), %s", name, resolved, source, tool_version(resolved))
     return resolved
 
 
