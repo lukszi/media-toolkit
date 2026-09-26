@@ -47,6 +47,9 @@ mkvkit remux    FILE --staging DIR            rebuild it without some tracks
 mkvkit verify   ORIGINAL BUILT                prove the difference is the one you asked for
 mkvkit swap     KEEPER REPLACEMENT            park the old file, put the new one in its path
 mkvkit copy     SOURCE DESTINATION [--move]   copy or move a file, proved on both sides
+mkvkit sidecars PATH...                      everything that belongs to a video
+mkvkit walk    ROOT                          a tree, without entering links or junctions
+mkvkit steps   show|status|apply PLAN        a saved plan, its progress, and a resume
 mkvkit langid   jobs|scan|report              identify the spoken language of a track
 ```
 
@@ -219,6 +222,66 @@ It lists each directory once with `os.scandir`. On Windows the listing
 already carries attributes, reparse tag and size, so it needs no further
 calls. Elsewhere a size costs one `lstat` per file, which `sizes=False`
 saves.
+
+---
+
+## `mkvkit.steps` -- plan, dry run, apply, audit, resume
+
+A verb that changes many things -- a rename that carries a dozen sidecars, a
+replay of play state onto a hundred new items -- goes through one shape:
+
+1. **a plan**: `Plan(verb, steps)`, an ordered list of `Step(id, action,
+   params, summary)` with JSON parameters, built before anything happens;
+2. **the dry run**: `plan.render()` prints it and `plan.save(path)` writes it
+   for review. It is the plan itself, not a simulation of it;
+3. **apply**: `apply(plan, actions, audit=path)` runs each step through the
+   action its name selects, and appends one JSON line per event to the audit
+   (`plan`, `start`, `done`, `failed`, `skipped`), flushed as it goes;
+4. **resume**: run the same plan with the same audit again. Steps the audit
+   records as done are skipped, and a step whose action can tell its change is
+   already in place (`Action.done`) is recorded as done without running. A
+   failure stops the run and leaves the rest pending; `attempts=N` retries a
+   refused access with a doubling back-off.
+
+The plan's fingerprint -- a digest of its verb and steps -- ties an audit to
+one plan, and `load_plan()` refuses a saved plan whose steps were edited after
+it was saved. `FILE_ACTIONS` holds `mkdir`, `rename` (one volume, never
+replaces anything, folders too) and `copy`/`move` (through
+`transfer.verified_copy`); a verb adds its own actions for anything else.
+`add_plan_arguments(parser)` gives a verb `--plan-out`, `--plan` and
+`--audit`.
+
+```
+mkvkit steps show plan.json
+mkvkit steps status plan.json --audit rename.audit.jsonl
+mkvkit steps apply plan.json --audit rename.audit.jsonl --apply
+```
+
+`steps apply` runs a saved plan made only of file steps, and is how a
+rename that stopped half way -- a file held open, an access refused -- is
+finished: the same command again, after the cause is gone.
+
+---
+
+## `mkvkit.lanes` -- one reader per disk, bounded requests elsewhere
+
+Two kinds of fan-out, kept apart on purpose:
+
+- `map_bounded(work, items, workers=None)` runs requests side by side, at
+  most `workers` at a time (default `DEFAULT_WORKERS` = 4, capped at
+  `MAX_WORKERS` = 32). Each item's result or exception comes back in an
+  `Outcome`, in the order of the items.
+- `map_by_device(work, items, path_of=..., device_of=device_of,
+  weight_of=None, max_devices=None, before_each=None)` is the only way to fan
+  out work that reads file content. Items are grouped by the device behind
+  their path, every device gets exactly **one** worker, and the devices run
+  side by side. Nothing puts a second reader on one device. Heaviest first
+  within a device when `weight_of` is given; `before_each(device, item)` is
+  where a gate that waits for a quiet disk goes.
+
+A device is a volume (`mkvkit.devices.device_of`, which `jfkit.devices`
+re-exports). Two partitions of one disk are two volumes: pass a `device_of`
+that maps them to one name when that is the case.
 
 ---
 

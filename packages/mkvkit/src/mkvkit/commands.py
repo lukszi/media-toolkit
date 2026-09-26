@@ -1,8 +1,10 @@
 """mkvkit.commands -- the file-side sub-commands.
 
-Seven verbs, in the order a job uses them: look at the file, read its marks
-and its tags, plan and run a rebuild, edit a header in place, prove the result,
-and finally put it where the old file was.
+The verbs, in the order a job uses them: look at the file and prove its
+payload plays, read its marks and its tags, plan and run a rebuild, edit a
+header in place, prove the result, put it where the old file was, and copy or
+move a file with both sides proved. ``sidecars`` and ``walk`` only read: what
+belongs to a video, and what is in a tree without following its links.
 
 ``chapters`` has a second group of verbs under it for the question a published
 name list raises: which of the three jobs this candidate is (``classify``),

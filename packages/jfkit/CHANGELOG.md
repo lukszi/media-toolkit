@@ -7,6 +7,18 @@ day the work was done.
 
 ### Added
 
+- **`find`, `children` and `playstate`.** Items by name, path, provider id
+  or type; an item's children, descendants or extras; and every user's
+  watched state for items, read as each user. All user-scoped, printed as
+  tab-separated rows or JSON, `playstate` batched and sent `--jobs` requests
+  at a time.
+- **`userdata snapshot|replay|verify`.** Every user's watched state, carried
+  across a rename or a renumber through an old-to-new identifier mapping.
+  The replay also clears state the server handed a new episode by its
+  season/episode slot, which the snapshot does not account for, and reports
+  the last-played dates it cannot clear. It is a `mkvkit.steps` plan: dry
+  run, audit, resume.
+
 - **`delete` proves the kept copy plays.** Before a twin, a superseded copy
   or a rebuild's donor is parked, the payload of the copy that is kept is
   read with `mkvkit integrity` -- sampled, listed and, by default, decoded
@@ -20,6 +32,12 @@ day the work was done.
   (`--replacement-check full|quick`).
 
 ### Fixed
+
+- **`delete` does not call a folder media-free when it holds a link.** A
+  junction or symbolic link below a released folder was walked into -- onto
+  whatever disk it pointed at -- or ignored. The check now walks without
+  following links, and a link, a junction or a folder it cannot list makes
+  the folder not media-free.
 
 - **`jfkit delete --apply` no longer asks the server to delete the item.**
   After parking a file it called `DELETE /Items/{id}`, which on this server

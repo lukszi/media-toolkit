@@ -5,9 +5,10 @@ script that drives both learns one set: a configuration file, verbosity, a log
 file, machine-readable logging, and --dry-run against --apply on everything
 that writes.
 
-Eleven sub-commands. Three of them read and nothing else -- predicting how a
-filename will be read, surveying what is in the library, and asking which
-device backs a path -- and they are the ones worth running first.
+Fifteen sub-commands. Six of them read and nothing else -- predicting how a
+filename will be read, surveying what is in the library, asking which device
+backs a path, finding items, listing an item's children and reading everybody's
+watched state -- and they are the ones worth running first.
 """
 
 # SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0

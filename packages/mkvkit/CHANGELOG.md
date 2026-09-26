@@ -11,6 +11,28 @@ and not say so.
 
 ### Added
 
+- **`mkvkit.walk` does not wander onto another disk.** A junction is a
+  directory that `os.path.islink` calls ordinary, so a plain walk descends
+  into it. `walk()` enters no symbolic link, junction or other directory
+  reparse point unless told to, takes exclude globs and paths, and reports
+  everything it left out and why. `mkvkit walk ROOT` prints the same.
+- **`mkvkit.sidecars`: everything that belongs to a video.** The metadata
+  file, the pictures, the subtitles and external audio, the preview-tile
+  folder and anything else named after the video's stem, sorted by kind and
+  by whether the server reads it, so a rename or a move can carry all of it.
+  `mkvkit sidecars PATH...` lists them, and the files no video claims.
+- **`mkvkit.steps`: plan, dry run, apply, audit, resume.** One shape for a
+  verb that changes many things: a plan of steps that the dry run prints and
+  saves, an apply that appends every step to a JSON-lines audit, and a
+  second run of the same plan that skips what is done. `mkvkit steps
+  show|status|apply` reads a saved plan and finishes a file plan that
+  stopped half way.
+- **`mkvkit.lanes`: one reader per disk.** `map_by_device()` runs work that
+  reads file content with exactly one worker per device and the devices
+  side by side; `map_bounded()` runs requests at most `workers` at a time
+  (default 4). The device of a path moved to `mkvkit.devices`, and
+  `jfkit.devices` re-exports it.
+
 - **`mkvkit integrity` reads the payload, not the headers.** A file whose
   body was reserved and never written keeps a perfect header, and every
   header-level reader -- `probe` included -- called it healthy. The check

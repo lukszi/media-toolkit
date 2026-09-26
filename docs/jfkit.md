@@ -79,10 +79,14 @@ jfkit swap        PLAN                     put rebuilt files in their items' pla
 jfkit delete      MANIFEST                 park what a named category released
 jfkit segments    tasks|scope|cancel       scope a segment pass to what is not covered
 jfkit jobs        gate|lanes               which device backs a path, and is it busy
+jfkit find        --name|--path|--provider find items, as the configured user sees them
+jfkit children    ID                       children, descendants or extras of an item
+jfkit playstate   ID...                    every user's watched state for items
+jfkit userdata    snapshot|replay|verify   carry watched state across a rename
 ```
 
-`naming` and `survey` read and change nothing, and so does `item` except
-for `item set`, which writes. `naming`, `survey`, `item show` and
+`naming`, `survey`, `find`, `children` and `playstate` read and change
+nothing, and so does `item` except for `item set`, which writes. `naming`, `survey`, `item show` and
 `item diff` are the ones worth running first, and `jfkit survey` is the
 cheapest useful thing in the package.
 
@@ -308,6 +312,69 @@ No plugin or task identifier is ever written down: both are looked up by
 name, and a name that matches two things is an error rather than a coin toss.
 An identifier in a source file addresses nothing on another machine -- and it
 does not fail loudly when it does.
+
+## `jfkit.query` -- find, children, playstate
+
+The read side a cleanup keeps needing, without an identifier up front:
+
+```
+jfkit find --name "Harbour Lights" --exact --type Series
+jfkit find --path "/srv/media/series/Harbour Lights/Season 02"
+jfkit find --provider Tmdb=1001
+jfkit children 00000000-0000-0000-0000-000000000100 --recursive --type Episode
+jfkit children 00000000-0000-0000-0000-000000000100 --extras
+jfkit playstate 00000000-0000-0000-0000-000000000100 --recursive --format json
+```
+
+Every query is user-scoped: the unscoped collection route answers short and
+says nothing. `playstate` reads every user by default, each through that
+user's own route, with identifiers batched (`BATCH` = 50 per request) and the
+requests sent `--jobs N` at a time (default 4). Output is tab-separated with
+a header line, or `--format json`. `find` exits 1 when nothing matched;
+`playstate` exits 1 when an item or a user could not be read, and says which.
+
+The library side is `find(client, name=, exact=, path=, provider=, types=,
+parent=)`, `children(client, item_id, recursive=, types=, extras=)` and
+`playstate(client, item_ids, user_ids=None, workers=None) ->
+PlayStateReport(rows, errors, missing)`, plus `render(rows, columns, fmt)`.
+
+## `jfkit.userdata` -- watched state across a rename
+
+A rename, a move or a renumber gives an item a new identifier, and every
+user's watched state stays with the old one. Snapshot first, change the
+files, then replay onto the new identifiers through a mapping (old id to new
+id, as a JSON object or two tab-separated columns):
+
+```
+jfkit userdata snapshot --parent 00000000-0000-0000-0000-000000000100 --out before.json
+# ... rename, notify, let the server pick the new files up ...
+jfkit userdata replay before.json --map ids.tsv \
+    --scope-parent 00000000-0000-0000-0000-000000000100 --plan-out replay.json
+jfkit userdata replay before.json --map ids.tsv \
+    --scope-parent 00000000-0000-0000-0000-000000000100 \
+    --plan replay.json --audit replay.audit.jsonl --apply
+jfkit userdata verify before.json --map ids.tsv \
+    --scope-parent 00000000-0000-0000-0000-000000000100
+```
+
+**State handed out by slot is cleared.** After a renumber the server can give
+a *new* episode the watched state recorded for its season/episode slot -- the
+old file's. The replay therefore reads everything in scope, and every row the
+snapshot does not account for is reset: an item no snapshot row maps onto is
+expected unwatched. Widen the scope to the whole series with
+`--scope-parent`; without it only the mapped items are checked.
+
+**What cannot be cleared.** The user-data route leaves a field it is sent as
+null untouched, so a last-played date can be set but never removed. A cleared
+row keeps its date; the plan's notes and `verify` report those rows
+separately, and they do not fail the check.
+
+The replay is a `mkvkit.steps` plan of `userdata.write` steps: the dry run
+prints it, `--plan-out` saves it, `--apply` needs `--audit`, and the same
+command again resumes after a partial failure. `--apply` verifies the result
+and exits 1 if a row still differs. A snapshot is refused rather than written
+with a hole in it. Anybody watching during the rename is overwritten by the
+replay: wait for idle first.
 
 ---
 
