@@ -111,13 +111,15 @@ none of them is published on PyPI.
 
 **Edit a Matroska file, and prove you changed only what you meant to.**
 `mkvkit probe` says what is in a file, from both programs that can describe
-one. `mkvkit propedit` changes a track header in place, selecting the track by
+one; `mkvkit integrity` says whether its payload is actually there and plays,
+which no header can. `mkvkit propedit` changes a track header in place, selecting the track by
 the identifier it carries, and reads the file back to prove nothing else
 moved. `mkvkit remux` rebuilds a file without the tracks a policy allows
 dropping -- into a staging directory, never over the input -- and
 `mkvkit verify` compares the two files against a *declared* difference, with
 one payload hash per stream as the evidence. `mkvkit swap` then parks the
-original and puts the rebuild in its exact path. `mkvkit chapters` and
+original and puts the rebuild in its exact path, once the rebuild is proved to
+play. `mkvkit chapters` and
 `mkvkit tags` read, check and write the two elements that are easiest to
 damage by accident. Everything that writes defaults to a dry run.
 
@@ -166,7 +168,8 @@ what was expected. `jfkit swap` puts a rebuilt file in an item's exact path so
 its identity, its play state and its name survive, with the service stopped
 per chunk and the chunks sized in bytes. `jfkit delete` refuses to touch
 anything whose category nobody released, checks every precondition against the
-world rather than against the manifest, and parks rather than deletes.
+world rather than against the manifest, proves that a kept copy plays before
+it gives up another, and parks rather than deletes.
 `jfkit libopts`, `jfkit maintenance`, `jfkit segments` and `jfkit jobs` cover
 library options, the catalogue database, scoping a segment pass, and not
 putting two heavy readers on one disk.

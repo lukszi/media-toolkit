@@ -28,10 +28,12 @@ where "it printed something" is not a signal.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 from pathlib import Path
 
+from . import integrity as integrity_module
 from . import plan as plan_module
 from . import remux as remux_module
 from . import swap as swap_module
@@ -51,6 +53,7 @@ from .propedit import TrackEdit, safe_propedit
 __all__ = [
     "REGISTRARS",
     "add_force_argument",
+    "add_payload_check_argument",
     "add_rollback_argument",
     "add_write_arguments",
 ]
@@ -87,6 +90,18 @@ def _out_refused(out: Path, force: bool) -> bool:
     return False
 
 
+def add_payload_check_argument(
+    parser: argparse.ArgumentParser, flag: str, what: str
+) -> None:
+    """How a copy that is about to be relied on is proved to play first."""
+    parser.add_argument(
+        flag, choices=["full", "quick"], default="full",
+        help=f"how {what} is proved to play before anything moves: full "
+             "(sampled, listed and decoded; the default) or quick (not decoded). "
+             "There is no way to skip it",
+    )
+
+
 def add_write_arguments(parser: argparse.ArgumentParser) -> None:
     """``--dry-run`` and ``--apply``, the only two states there are."""
     group = parser.add_mutually_exclusive_group()
@@ -113,6 +128,11 @@ def _register_probe(subparsers: argparse._SubParsersAction) -> None:  # type: ig
     parser.set_defaults(handler=_probe)
 
 
+#: How many blocks `probe` samples for zero fill. A glance, not the check:
+#: `mkvkit integrity` reads more and reads the payload.
+PROBE_SAMPLE_BLOCKS = 16
+
+
 def _probe(args: argparse.Namespace, config: Config) -> int:
     problems = 0
     for path in args.paths:
@@ -123,7 +143,79 @@ def _probe(args: argparse.Namespace, config: Config) -> int:
         if mismatch is not None:
             print(f"  PROBLEM: {mismatch}")
             problems += 1
+        # Everything above is read from headers, which a file that was never
+        # filled keeps intact. A few sampled blocks are the cheapest sign.
+        try:
+            zero = integrity_module.sample_zero_fill(path, blocks=PROBE_SAMPLE_BLOCKS)
+        except OSError as exc:
+            print(f"  PROBLEM: the payload cannot be read: {exc.strerror or exc}")
+            problems += 1
+            continue
+        if zero.zero_blocks:
+            limit = integrity_module.Thresholds().max_zero_fraction
+            label = "PROBLEM" if zero.fraction > limit else "WARNING"
+            print(
+                f"  {label}: {zero}; the headers above say nothing about the "
+                "payload -- run `mkvkit integrity`"
+            )
+            problems += zero.fraction > limit
     return 1 if problems else 0
+
+
+# ------------------------------------------------------------------- integrity
+def _register_integrity(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    parser = subparsers.add_parser(
+        "integrity", help="is the payload there, and does it play: read it, not the headers"
+    )
+    parser.add_argument("paths", nargs="+", type=Path, metavar="PATH")
+    parser.add_argument(
+        "--quick", action="store_true",
+        help="sample and list the payload, but do not decode it",
+    )
+    parser.add_argument(
+        "--blocks", type=int, default=integrity_module.DEFAULT_BLOCKS, metavar="N",
+        help="how many evenly spaced blocks to sample for zero fill",
+    )
+    parser.add_argument(
+        "--block-mib", type=float,
+        default=integrity_module.DEFAULT_BLOCK_SIZE / (1 << 20), metavar="MIB",
+        help="how large each sampled block is",
+    )
+    defaults = integrity_module.Thresholds()
+    parser.add_argument("--max-zero-fraction", type=float,
+                        default=defaults.max_zero_fraction, metavar="F")
+    parser.add_argument("--min-coverage", type=float,
+                        default=defaults.min_coverage, metavar="F")
+    parser.add_argument("--max-decode-errors", type=int,
+                        default=defaults.max_decode_errors, metavar="N")
+    parser.add_argument("--json", type=Path, metavar="PATH",
+                        help="also write every report here, one JSON object per line")
+    parser.set_defaults(handler=_integrity)
+
+
+def _integrity(args: argparse.Namespace, config: Config) -> int:
+    """Exit 0 when every file passed; 1 when any failed or could not be checked."""
+    thresholds = integrity_module.Thresholds(
+        max_zero_fraction=args.max_zero_fraction,
+        min_coverage=args.min_coverage,
+        max_decode_errors=args.max_decode_errors,
+    )
+    reports = []
+    for path in args.paths:
+        report = integrity_module.check(
+            path, decode=not args.quick, blocks=args.blocks,
+            block_size=max(1, int(args.block_mib * (1 << 20))),
+            thresholds=thresholds, config=config,
+        )
+        reports.append(report)
+        print(report)
+    if args.json:
+        with args.json.open("w", encoding="utf-8", newline="\n") as handle:
+            for report in reports:
+                handle.write(json.dumps(report.as_dict(), ensure_ascii=False) + "\n")
+    failed = [r for r in reports if not r.ok]
+    print(f"{len(reports)} file(s), {len(failed)} failed or unchecked")
+    return 1 if failed else 0
 
 
 # -------------------------------------------------------------------- chapters
@@ -647,6 +739,7 @@ def _register_swap(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         "--parked", type=Path, default=None,
         help="where the original goes; otherwise [paths].parked",
     )
+    add_payload_check_argument(parser, "--replacement-check", "the replacement")
     add_write_arguments(parser)
     parser.set_defaults(handler=_swap)
 
@@ -664,6 +757,10 @@ def _swap(args: argparse.Namespace, config: Config) -> int:
         parked_dir=parked,
         dry_run=not args.apply,
         config=config,
+        payload_check=functools.partial(
+            integrity_module.check, config=config,
+            decode=args.replacement_check == "full",
+        ),
     )
     print(result)
     return 0 if result.ok else 1
@@ -678,6 +775,7 @@ def _no_verb(args: argparse.Namespace, _config: Config) -> int:
 #: so a command that cannot be imported costs the others nothing.
 REGISTRARS = {
     "probe": _register_probe,
+    "integrity": _register_integrity,
     "chapters": _register_chapters,
     "tags": _register_tags,
     "propedit": _register_propedit,

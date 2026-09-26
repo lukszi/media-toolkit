@@ -31,20 +31,25 @@ And, as everywhere in this package, nothing happens without ``dry_run=False``.
 
 from __future__ import annotations
 
+import functools
 import logging
 import shutil
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import integrity
 from .config import Config
+from .integrity import IntegrityReport
 from .probe import probe
 from .run import Runner, default_runner
 
 __all__ = [
+    "PayloadCheck",
     "SwapPair",
     "SwapResult",
     "parked_path",
+    "payload_problems",
     "probe_check",
     "swap",
     "swap_all",
@@ -55,6 +60,25 @@ log = logging.getLogger(__name__)
 #: What a check does: look at the file that arrived and return what is wrong
 #: with it. An empty list means it is fine.
 Check = Callable[[Path], list[str]]
+
+#: Reads the replacement's payload before anything moves (see
+#: :mod:`mkvkit.integrity`). The original is parked because the replacement
+#: takes its place, so the replacement has to be proved to play first: its
+#: header proves nothing, a file that was never filled keeps a perfect one.
+PayloadCheck = Callable[[Path], IntegrityReport]
+
+
+def payload_problems(replacement: Path, check: PayloadCheck) -> list[str]:
+    """Why the replacement's payload is not proved, or nothing when it is."""
+    try:
+        report = check(replacement)
+    except Exception as exc:  # a check that cannot run proves nothing
+        return [f"no evidence that the replacement plays: the check failed: {exc}"]
+    if not report.evidence:
+        return ["no evidence that the replacement plays: " + "; ".join(report.problems)]
+    if not report.ok:
+        return ["the replacement's payload is not there: " + "; ".join(report.problems)]
+    return []
 
 
 @dataclass(frozen=True)
@@ -138,8 +162,15 @@ def swap(
     check: Check | None = None,
     runner: Runner | None = None,
     config: Config | None = None,
+    payload_check: PayloadCheck | None = None,
 ) -> SwapResult:
-    """Park the original, copy the replacement into its path, read it back."""
+    """Park the original, copy the replacement into its path, read it back.
+
+    Before anything moves -- in a dry run too -- the replacement's payload is
+    read (``payload_check``, by default the full :func:`mkvkit.integrity.check`,
+    decode included). A replacement that fails it, or that cannot be checked,
+    refuses the swap.
+    """
     keeper, replacement = pair.keeper, pair.replacement
     parking = Path(parked_dir)
     problems: list[str] = []
@@ -159,6 +190,13 @@ def swap(
             f"something is already parked at {destination}; it is not overwritten, "
             "because that is the copy somebody may still need"
         )
+    if problems:
+        return SwapResult(keeper, problems=tuple(problems))
+
+    measure = payload_check or functools.partial(
+        integrity.check, runner=runner, config=config
+    )
+    problems = payload_problems(replacement, measure)
     if problems:
         return SwapResult(keeper, problems=tuple(problems))
 
@@ -221,6 +259,7 @@ def swap_all(
     check: Check | None = None,
     runner: Runner | None = None,
     config: Config | None = None,
+    payload_check: PayloadCheck | None = None,
 ) -> tuple[SwapResult, ...]:
     """Swap a batch, in order, stopping at the first problem by default.
 
@@ -232,7 +271,7 @@ def swap_all(
     for pair in pairs:
         result = swap(
             pair, parked_dir=parked_dir, dry_run=dry_run, check=check,
-            runner=runner, config=config,
+            runner=runner, config=config, payload_check=payload_check,
         )
         results.append(result)
         if not result.ok and stop_on_problem:

@@ -9,6 +9,28 @@ Every finding of the pre-release review that concerns this package's own
 code. Most are about a write that could leave a file worse than it found it
 and not say so.
 
+### Added
+
+- **`mkvkit integrity` reads the payload, not the headers.** A file whose
+  body was reserved and never written keeps a perfect header, and every
+  header-level reader -- `probe` included -- called it healthy. The check
+  samples evenly spaced blocks for zero fill, lists every packet of every
+  audio and video track against the container's duration, and decodes
+  every track, reporting each track's decoded duration and what the
+  decoder complained about. A file that cannot be read, or a missing
+  program, is reported as no evidence, never as a pass. The library side is
+  `mkvkit.integrity.check()`, `sample_zero_fill()` and `Thresholds`.
+- **`probe` looks at the payload a little, and at every track's duration.**
+  It samples sixteen blocks and reports zero-filled ones (a problem, exit 1,
+  above the integrity threshold), and where a track's stated duration
+  differs from the container's by more than a few seconds it prints each
+  track's duration and a warning. `Stream.tagged_duration_s` and
+  `probe.duration_disagreements()` are new.
+- **`swap` proves the replacement plays before the original is parked.**
+  The payload check runs in the dry run too; a replacement that fails it,
+  or cannot be checked, refuses the swap. `--replacement-check full|quick`
+  chooses whether it decodes; nothing skips it.
+
 ### Changed
 
 - **`remux --apply` verifies what it built.** Both files are hashed stream by

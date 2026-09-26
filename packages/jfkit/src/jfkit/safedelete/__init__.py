@@ -46,15 +46,19 @@ has learned something real; that is the point.
 from __future__ import annotations
 
 import csv
+import functools
 import json
 import logging
 import os
 import shutil
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from mkvkit import integrity
+from mkvkit.integrity import IntegrityReport
 
 from ..client import Client
 from ..dto import every_user, fetch, user_data
@@ -71,10 +75,13 @@ from .evidence import (
 
 __all__ = [
     "CATEGORIES",
+    "KEPT_COPY_CATEGORIES",
     "Candidate",
     "Check",
     "DeletionReport",
+    "KeeperCheck",
     "Outcome",
+    "default_keeper_check",
     "load_manifest",
     "preconditions",
     "resolve_users",
@@ -92,6 +99,19 @@ CATEGORIES: Mapping[str, str] = {
     "rebuild-donor": "the file a kept rebuild was made from, and the rebuild is there",
     "superseded-copy": "a kept item covers this one, named in the manifest",
 }
+
+
+#: The categories that remove one copy because another is kept. Each one
+#: reads the kept copy's payload before anything moves.
+KEPT_COPY_CATEGORIES = frozenset({"rebuild-donor", "superseded-copy"})
+
+#: Reads one kept file and says whether its payload is there and plays.
+KeeperCheck = Callable[[Path], IntegrityReport]
+
+
+def default_keeper_check(*, decode: bool = True) -> KeeperCheck:
+    """The full payload check, decode included unless asked otherwise."""
+    return functools.partial(integrity.check, decode=decode)
 
 
 @dataclass(frozen=True)
@@ -248,8 +268,13 @@ def preconditions(
     *,
     allowed_categories: Iterable[str],
     users: Sequence[str] = (),
+    keeper_check: KeeperCheck | None = None,
 ) -> tuple[list[Check], FolderContents | None]:
     """Every check for one candidate, against the world as it is now.
+
+    ``keeper_check`` reads the payload of the copy that is kept, for every
+    category that removes one copy because another stays; by default the
+    full :func:`mkvkit.integrity.check`, decode included.
 
     ``users`` narrows the play-state check to the users named. Naming nobody
     means *everybody*: every user the server lists is checked, and a server
@@ -289,8 +314,10 @@ def preconditions(
     checks.append(_play_state_check(client, candidate.item_id, users))
 
     contents: FolderContents | None = None
+    kept_file: Path | None = None
     if candidate.category == "byte-identical-twin":
         checks.append(_twin_check(candidate))
+        kept_file = candidate.keeper
     elif candidate.category == "media-free-folder":
         checks.append(Check(
             "the folder holds no media",
@@ -303,8 +330,25 @@ def preconditions(
             not tracks,
             ", ".join(p.name for p in tracks[:5]) + (" ..." if len(tracks) > 5 else ""),
         ))
-    elif candidate.category in {"rebuild-donor", "superseded-copy"}:
-        checks.append(_keeper_check(client, candidate))
+    elif candidate.category in KEPT_COPY_CATEGORIES:
+        kept_check, kept_file = _keeper_check(client, candidate)
+        checks.append(kept_check)
+
+    if candidate.category in {"byte-identical-twin", *KEPT_COPY_CATEGORIES}:
+        # Removing a copy because another is kept is only safe if the kept one
+        # plays. Its header proves nothing: a file that was never filled keeps
+        # a perfect one. So the payload of the kept file is read, and a check
+        # that cannot run is a refusal, not a pass.
+        if all(check.ok for check in checks):
+            checks.append(_kept_copy_plays(kept_file, keeper_check))
+        else:
+            # Reading and decoding a kept file is the slow part of a run; for
+            # a candidate another precondition already refuses it would only
+            # add a second reason. Recorded as a refusal all the same.
+            checks.append(Check(
+                KEPT_COPY_PLAYS, False,
+                "not measured: an earlier precondition already refuses this one",
+            ))
 
     if candidate.path.is_file():
         # Reported rather than checked: another file in the folder does not stop
@@ -392,26 +436,27 @@ def _twin_check(candidate: Candidate) -> Check:
     return Check("a twin is named and is identical", found.same, str(found))
 
 
-def _keeper_check(client: Client, candidate: Candidate) -> Check:
+def _keeper_check(client: Client, candidate: Candidate) -> tuple[Check, Path | None]:
+    """Whether the kept item is there, and the file it keeps (None if unknown)."""
     if not candidate.keeper_id:
         return Check(
             "the kept item exists", False,
             "this category needs the identifier of what is kept instead",
-        )
+        ), None
     if candidate.keeper_id == candidate.item_id:
         return Check(
             "the kept item exists", False,
             "the kept item named is the candidate itself",
-        )
+        ), None
     if candidate.keeper is not None and _same_file(candidate.keeper, candidate.path):
         return Check(
             "the kept item exists", False,
             f"the keeper named is the candidate itself: {candidate.keeper}",
-        )
+        ), None
     try:
         kept = fetch(client, candidate.keeper_id)
     except (ItemNotFound, LookupError) as exc:
-        return Check("the kept item exists", False, str(exc))
+        return Check("the kept item exists", False, str(exc)), None
     kept_path = Path(str(kept.get("Path") or ""))
     if kept.get("Path") and (
         _same_path(str(kept["Path"]), candidate.path)
@@ -420,12 +465,43 @@ def _keeper_check(client: Client, candidate: Candidate) -> Check:
         return Check(
             "the kept item exists and its file is there", False,
             f"the kept item's file is the candidate itself: {kept_path}",
-        )
+        ), None
+    there = bool(kept.get("Path")) and kept_path.is_file()
     return Check(
         "the kept item exists and its file is there",
-        bool(kept.get("Path")) and kept_path.is_file(),
+        there,
         f"kept: {kept.get('Name')} at {kept_path}",
+    ), (kept_path if there else None)
+
+
+KEPT_COPY_PLAYS = "the kept copy's payload is there and plays"
+
+
+def _kept_copy_plays(kept: Path | None, keeper_check: KeeperCheck | None) -> Check:
+    if kept is None:
+        return Check(
+            KEPT_COPY_PLAYS, False,
+            "no kept file could be named, so there is no evidence it plays",
+        )
+    run = keeper_check or default_keeper_check()
+    try:
+        report = run(kept)
+    except Exception as exc:  # any failure to measure is a refusal
+        return Check(
+            KEPT_COPY_PLAYS, False,
+            f"no evidence: the check of {kept} could not run: {exc}",
+        )
+    if not report.evidence:
+        return Check(
+            KEPT_COPY_PLAYS, False,
+            f"no evidence for {kept}: " + "; ".join(report.problems),
+        )
+    detail = (
+        f"{kept}: " + ("; ".join(report.problems) if report.problems else
+                       "every track covers the container"
+                       + ("" if report.decoded else " (not decoded)"))
     )
+    return Check(KEPT_COPY_PLAYS, report.ok, detail)
 
 
 # ---------------------------------------------------------------- the run
@@ -439,6 +515,7 @@ def safe_delete(
     audit: Path | str | None = None,
     backup_folders: Path | str | None = None,
     remove_rows: bool = True,
+    keeper_check: KeeperCheck | None = None,
 ) -> DeletionReport:
     """Check everything, then -- if the client is not in a dry run -- park it.
 
@@ -455,6 +532,10 @@ def safe_delete(
 
     ``users`` names whose play state is checked; naming nobody checks every
     user the server lists, once for the run.
+
+    ``keeper_check`` reads the payload of every kept copy (default: the full
+    :func:`mkvkit.integrity.check`). Each kept file is read once per run, however
+    many candidates name it.
     """
     released = tuple(sorted(set(allowed_categories)))
     audit_path = Path(audit) if audit is not None else None
@@ -470,10 +551,22 @@ def safe_delete(
         # again and fails its own check with the reason, in its own lines.
         users = listed
 
+    measure = keeper_check or default_keeper_check()
+    measured: dict[str, IntegrityReport] = {}
+
+    def once(kept: Path) -> IntegrityReport:
+        key = os.path.normcase(os.path.abspath(kept))
+        if key not in measured:
+            measured[key] = measure(kept)
+            for line in str(measured[key]).splitlines():
+                writer.line(f"kept copy: {line}")
+        return measured[key]
+
     outcomes: list[Outcome] = []
     for candidate in candidates:
         checks, contents = preconditions(
-            client, candidate, allowed_categories=released, users=users
+            client, candidate, allowed_categories=released, users=users,
+            keeper_check=once,
         )
         notes = tuple(contents.notes) if contents is not None else ()
         outcome = Outcome(candidate=candidate, checks=tuple(checks), notes=notes)

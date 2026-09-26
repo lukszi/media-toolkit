@@ -36,7 +36,8 @@ Every example below uses invented names.
 The commands are in the order a job uses them.
 
 ```
-mkvkit probe    FILE...                       what is in it
+mkvkit probe    FILE...                       what is in it, by its headers
+mkvkit integrity FILE...                      whether the payload is there and plays
 mkvkit chapters show|check|rollback|apply     the marks, and the document
 mkvkit chapters classify|match|windows        somebody else's names: which job,
 mkvkit chapters selfcheck|plan                whether they fit, and what changes
@@ -71,6 +72,52 @@ does not verify exits 1 and stays in staging, and must not be swapped in. It
 also prints the equivalent `mkvkit verify` command, with `--dropped`,
 `--default-moved` and `--chapters` already filled in, so the check can be
 repeated later -- the separate `verify` line above is that repeat.
+
+---
+
+## `mkvkit.integrity` -- is the payload there, and does it play
+
+Everything `probe` says comes from headers, and a header is a promise. A file
+whose body was reserved and never written -- a download that stopped, a copy
+that did not finish -- keeps a perfect one: the right container, the right
+tracks, the right duration, a seek index. Every header-level comparison
+passes on it. A duplicate pass that keeps "the better copy" on the strength
+of its header can keep the empty file and remove the only one that plays.
+
+```
+mkvkit integrity "/srv/media/series/Harbour Lights/Season 02/Harbour Lights - S02E05.mkv"
+mkvkit integrity --quick /srv/staging/*.mkv --json work/integrity.jsonl
+```
+
+It reads the payload three ways:
+
+1. **a sampled zero-fill read** -- `--blocks` evenly spaced blocks (64 by
+   default, 1 MiB each), first byte to last. Compressed media has no
+   megabyte-long runs of zeros; a block that is nothing else is space that
+   was never written;
+2. **a packet scan** -- the demuxer lists every packet of every audio and
+   video track (a full read, no decoding), and each track's timeline coverage
+   is added up against the container's duration, together with the share of
+   the file that is payload at all;
+3. **a decode** -- every audio and video track is decoded, and each track's
+   decoded duration is added up and what the decoder complains about is
+   reported. `--quick` leaves this out.
+
+A track that covers less than 90 % of the container (`--min-coverage`), more
+than 2 % of sampled blocks being zeros (`--max-zero-fraction`), less than half
+of the file being payload, or any decoder complaint (`--max-decode-errors`)
+fails the file. A file that cannot be read, or a missing program, is **no
+evidence** -- reported as such, and never as a pass. The exit code is 0 only
+when every file passed.
+
+`probe` samples sixteen blocks as well, and reports a file with zero-filled
+blocks; where the tracks' stated durations disagree with the container's by
+more than a few seconds, it prints each track's duration and a warning. Both
+are hints to run `integrity`; neither is the check.
+
+`jfkit delete` runs the full check on the kept copy before it removes another
+copy, and both swaps run it on the replacement before they park an original.
+There is no switch that skips it.
 
 ---
 

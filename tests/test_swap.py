@@ -13,8 +13,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from mkvkit.integrity import IntegrityReport
 from mkvkit.run import CommandFailed, Result
 from mkvkit.swap import SwapPair, parked_path, summarise, swap, swap_all
+
+from tests.stand_ins import payload_is_a_stand_in
+
+
+@pytest.fixture(autouse=True)
+def _replacements_are_stand_ins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These files are bytes, not media; the payload tests are at the end."""
+    payload_is_a_stand_in(monkeypatch)
 
 
 def tree(tmp_path: Path, *, name: str = "example.mkv") -> tuple[Path, Path, Path]:
@@ -224,3 +233,57 @@ def test_a_result_prints_as_something_a_person_can_read(tmp_path: Path) -> None:
     text = str(swap(SwapPair(keeper, replacement), parked_dir=parked))
     assert "not swapped" in text
     assert "parked at" in text
+
+
+# ------------------------------------------------ the replacement must play
+def test_a_replacement_whose_payload_is_not_there_is_refused_before_anything_moves(
+    tmp_path: Path,
+) -> None:
+    keeper, replacement, parked = tree(tmp_path)
+
+    def empty_inside(path: Path) -> IntegrityReport:
+        return IntegrityReport(path=path, problems=("14 of 16 sampled blocks are zeros",))
+
+    for dry_run in (True, False):
+        result = swap(SwapPair(keeper, replacement), parked_dir=parked,
+                      dry_run=dry_run, check=accept, payload_check=empty_inside)
+        assert not result.ok and "payload is not there" in result.problems[0]
+    assert keeper.read_bytes() == b"the original file"
+    assert not parked.exists()
+
+
+def test_no_evidence_about_the_replacement_is_a_refusal(tmp_path: Path) -> None:
+    keeper, replacement, parked = tree(tmp_path)
+
+    def unmeasurable(path: Path) -> IntegrityReport:
+        return IntegrityReport(path=path, evidence=False, problems=("ffprobe is missing",))
+
+    def raising(path: Path) -> IntegrityReport:
+        raise OSError("the disk went away")
+
+    for check in (unmeasurable, raising):
+        result = swap(SwapPair(keeper, replacement), parked_dir=parked,
+                      dry_run=False, check=accept, payload_check=check)
+        assert not result.ok and "no evidence" in result.problems[0]
+    assert keeper.read_bytes() == b"the original file"
+
+
+@pytest.mark.needs_ffmpeg
+def test_a_zero_filled_rebuild_is_refused_by_the_real_check(
+    tmp_path: Path, media_fixtures: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real check, on real media: a rebuild that stopped half way."""
+    monkeypatch.undo()
+    source = media_fixtures["tiny_multitrack.mkv"]
+    keeper = tmp_path / "live" / "Northwind - S01E03.mkv"
+    replacement = tmp_path / "staging" / "Northwind - S01E03.mkv"
+    keeper.parent.mkdir()
+    replacement.parent.mkdir()
+    keeper.write_bytes(source.read_bytes())
+    data = bytearray(source.read_bytes())
+    data[32 << 10:len(data) - (16 << 10)] = bytes(len(data) - (48 << 10))
+    replacement.write_bytes(bytes(data))
+    result = swap(SwapPair(keeper, replacement), parked_dir=tmp_path / "parked",
+                  dry_run=False, check=accept)
+    assert not result.ok and "payload is not there" in result.problems[0]
+    assert keeper.read_bytes() == source.read_bytes()

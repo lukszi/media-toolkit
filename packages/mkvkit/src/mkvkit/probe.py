@@ -68,6 +68,7 @@ __all__ = [
     "Stream",
     "Track",
     "container_mismatch",
+    "duration_disagreements",
     "ffprobe_json",
     "identify_json",
     "probe",
@@ -162,6 +163,14 @@ class Stream:
     language_from_tag: bool = False
     title: str | None = None
     disposition: Mapping[str, int] = field(default_factory=dict)
+    #: the duration the track's own statistics tag states (Matroska writes
+    #: one per track), where the stream itself states none
+    tagged_duration_s: float | None = None
+
+    @property
+    def stated_duration_s(self) -> float | None:
+        """The track's duration as its headers state it, from either place."""
+        return self.duration_s if self.duration_s is not None else self.tagged_duration_s
 
 
 @dataclass(frozen=True)
@@ -516,6 +525,11 @@ def _stream(raw: Mapping[str, Any]) -> Stream:
         if str(key).lower() == "title":
             title = _text(value)
             break
+    tagged: float | None = None
+    for key, value in tags.items():
+        if str(key).lower().split("-")[0] == "duration":
+            tagged = _clock(value)
+            break
     disposition = raw.get("disposition")
     return Stream(
         index=int(raw.get("index") or 0),
@@ -533,7 +547,56 @@ def _stream(raw: Mapping[str, Any]) -> Stream:
             if isinstance(disposition, Mapping)
             else {}
         ),
+        tagged_duration_s=tagged,
     )
+
+
+def _clock(value: Any) -> float | None:
+    """``01:02:03.500000000`` as seconds, or None."""
+    text = _text(value)
+    if not text:
+        return None
+    parts = text.split(":")
+    try:
+        numbers = [float(p) for p in parts]
+    except ValueError:
+        return None
+    seconds = 0.0
+    for number in numbers:
+        seconds = seconds * 60 + number
+    return seconds
+
+
+#: A track may end this much before or after the container without comment:
+#: an audio track routinely stops a frame or two short, and a few seconds is
+#: an edit, not a hole.
+DURATION_TOLERANCE_S = 5.0
+
+
+def duration_disagreements(
+    found: MediaProbe, *, tolerance_s: float = DURATION_TOLERANCE_S
+) -> list[str]:
+    """Audio and video tracks whose stated duration is not the container's.
+
+    Stated, not measured: these come from headers, which are exactly what a
+    broken file keeps. A disagreement is a reason to run the payload check
+    (:mod:`mkvkit.integrity`); agreement is not evidence the payload is there.
+    """
+    container = found.format_duration_s or found.container.duration_s
+    if not container:
+        return []
+    out: list[str] = []
+    for stream in found.streams:
+        if stream.type not in ("audio", "video") or stream.disposition.get("attached_pic"):
+            continue
+        stated = stream.stated_duration_s
+        if stated is None or abs(stated - container) <= tolerance_s:
+            continue
+        out.append(
+            f"stream {stream.index} ({stream.type}) states {stated:.1f} s, "
+            f"the container {container:.1f} s"
+        )
+    return out
 
 
 def _mark(raw: Mapping[str, Any]) -> ChapterMark:
@@ -607,4 +670,17 @@ def describe(found: MediaProbe) -> Sequence[str]:
         lines.append(f"  seek index: {'yes' if found.has_cues else 'NO'}")
     for disagreement in found.language_disagreements:
         lines.append(f"  {disagreement}")
+    disagreements = duration_disagreements(found)
+    if disagreements:
+        lines.append(
+            "  WARNING: the tracks' durations disagree with the container's; "
+            "run `mkvkit integrity` before relying on this file"
+        )
+        for stream in found.streams:
+            if stream.type in ("audio", "video") and stream.stated_duration_s is not None:
+                lines.append(
+                    f"    stream {stream.index} {stream.type:<5} "
+                    f"{stream.stated_duration_s:.1f} s"
+                )
+        lines += [f"    {d}" for d in disagreements]
     return lines

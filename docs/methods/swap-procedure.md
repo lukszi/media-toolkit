@@ -80,6 +80,14 @@ that matters: an exception halfway through must not leave the server down.
 
 ## 4. The original is moved, never deleted
 
+Before it moves, the replacement is **proved to play**: its payload is read
+(`mkvkit.integrity` -- sampled for zero-filled space, every packet counted
+against the container's duration, and decoded), once per replacement and
+before the first chunk, so the reading costs no downtime. A replacement that
+fails, or cannot be checked, refuses its pair. The original is parked only
+because the replacement takes its place, and a replacement's header proves
+nothing about its body.
+
     mkvkit.swap.parked_path(keeper, parked_dir)
 
 It goes to a parking directory that mirrors its own layout, and it stays there

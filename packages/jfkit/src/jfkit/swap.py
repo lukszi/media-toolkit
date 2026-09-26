@@ -46,14 +46,18 @@ refresh is usually the record from before it.
 
 from __future__ import annotations
 
+import functools
 import logging
+import os
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mkvkit import integrity
 from mkvkit import swap as file_swap
+from mkvkit.integrity import IntegrityReport
 
 from .client import Client
 from .dto import Comparison, compare, fetch, user_data
@@ -68,6 +72,7 @@ __all__ = [
     "Pair",
     "SwapReport",
     "chunks",
+    "default_replacement_check",
     "expected_streams",
     "preflight",
     "replay_play_state",
@@ -267,8 +272,21 @@ def _settle_condition(
 
 
 # ------------------------------------------------------------- preconditions
-def preflight(client: Client, pair: Pair) -> tuple[list[str], dict[str, Any] | None]:
+def default_replacement_check(*, decode: bool = True) -> file_swap.PayloadCheck:
+    """The full payload check, decode included unless asked otherwise."""
+    return functools.partial(integrity.check, decode=decode)
+
+
+def preflight(
+    client: Client,
+    pair: Pair,
+    replacement_check: file_swap.PayloadCheck | None = None,
+) -> tuple[list[str], dict[str, Any] | None]:
     """Every read-only check for one pair: what would stop it, and the record.
+
+    With ``replacement_check``, the replacement's payload is read as well:
+    the original is parked because the replacement takes its place, so the
+    replacement has to be proved to play, not merely to exist.
 
     Run by the dry run as well as before each outage, and never writes. The
     catalogued path is compared the way the deletion tool compares it, before
@@ -293,6 +311,11 @@ def preflight(client: Client, pair: Pair) -> tuple[list[str], dict[str, Any] | N
         problems.append(f"refused: nothing is on disk at {pair.keeper}")
     if not pair.replacement.is_file():
         problems.append(f"refused: the replacement is not there: {pair.replacement}")
+    elif replacement_check is not None:
+        problems += [
+            f"refused: {p}"
+            for p in file_swap.payload_problems(pair.replacement, replacement_check)
+        ]
     return problems, record
 
 
@@ -336,6 +359,7 @@ def swap(
     sleep: Callable[[float], None] | None = None,
     stop_on_problem: bool = True,
     check: file_swap.Check | None = None,
+    replacement_check: file_swap.PayloadCheck | None = None,
 ) -> SwapReport:
     """The whole procedure: wait, stop, park, copy, start, refresh, compare.
 
@@ -355,7 +379,21 @@ def swap(
     item is there, the plan's path is its path, both files exist, the users
     can be listed -- so a plan that would be refused is refused while nothing
     is at stake.
+
+    ``replacement_check`` proves each replacement plays (default: the full
+    :func:`mkvkit.integrity.check`, decode included). Every replacement is
+    read once, before the first chunk and so before any outage; a pair whose
+    replacement fails it, or cannot be checked, is refused.
     """
+    measure = replacement_check or default_replacement_check()
+    measured: dict[str, IntegrityReport] = {}
+
+    def once(path: Path) -> IntegrityReport:
+        key = os.path.normcase(os.path.abspath(path))
+        if key not in measured:
+            measured[key] = measure(path)
+        return measured[key]
+
     planned = chunks(
         pairs, chunk_gib=chunk_gib, mib_per_second=mib_per_second, budget_s=budget_s
     )
@@ -368,6 +406,11 @@ def swap(
             )
     names, why_not = resolve_users(client, users)
     no_users = () if names else (f"refused: {why_not}",)
+    # the slow reads happen here, while nothing is stopped
+    for chunk in planned:
+        for pair in chunk.pairs:
+            if pair.replacement.is_file():
+                once(pair.replacement)
 
     if client.dry_run:
         playing = len(client.playing())
@@ -380,7 +423,7 @@ def swap(
             outcomes=tuple(
                 Outcome(
                     pair, parked=file_swap.parked_path(pair.keeper, Path(parked)),
-                    problems=(*preflight(client, pair)[0], *no_users),
+                    problems=(*preflight(client, pair, once)[0], *no_users),
                 )
                 for chunk in planned for pair in chunk.pairs
             ),
@@ -410,7 +453,7 @@ def swap(
         play_state: dict[str, Mapping[str, Mapping[str, Any]]] = {}
         ready: list[Pair] = []
         for pair in chunk.pairs:
-            problems, record = preflight(client, pair)
+            problems, record = preflight(client, pair, once)
             if problems or record is None:
                 outcomes.append(Outcome(pair, problems=tuple(problems)))
                 continue
@@ -432,7 +475,7 @@ def swap(
             for pair in ready:
                 results[pair.item_id] = file_swap.swap(
                     pair.as_file_pair(), parked_dir=parked, dry_run=False,
-                    check=check,
+                    check=check, payload_check=once,
                 )
         downtime[chunk.index] = time.monotonic() - started
         log.info("chunk %d: service down %.0fs", chunk.index, downtime[chunk.index])

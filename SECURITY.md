@@ -96,6 +96,13 @@ The mitigations are part of the design, not optional flags:
   original for the stream-level proof); `jfkit swap` waits for the server's
   record to settle and compares it with the one before; `jfkit delete` re-reads
   the catalogue after the file is parked;
+* what is proved before a copy is given up, exactly: `jfkit delete` reads the
+  payload of the copy that is kept (twins, superseded copies, rebuild donors),
+  and `mkvkit swap` and `jfkit swap` read the replacement's, before anything
+  moves -- a sampled zero-fill read, every packet against the container's
+  duration and, unless `quick` is asked for, a full decode (`mkvkit
+  integrity`). A copy that fails, or that cannot be checked, refuses the
+  operation;
 * a container whose type is not what its extension claims is refused rather
   than edited, because the header editor would otherwise report success while
   changing nothing.

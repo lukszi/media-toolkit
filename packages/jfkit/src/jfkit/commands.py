@@ -51,7 +51,7 @@ from .dto import compare, fetch, load, save, update_item
 from .jobs import gate as device_gate
 from .report import FORMATS
 from .report import write as write_survey
-from .safedelete import load_manifest, safe_delete
+from .safedelete import default_keeper_check, load_manifest, safe_delete
 from .service import ServiceControlError, ServiceController, controller_for
 
 __all__ = ["REGISTRARS", "add_service_arguments", "add_write_arguments", "client_from"]
@@ -466,6 +466,12 @@ def _register_swap(subparsers: argparse._SubParsersAction) -> None:  # type: ign
     parser.add_argument("--user", action="append", default=[], metavar="ID",
                         help="a user whose play state is snapshotted and replayed "
                         "(default: every user the server lists)")
+    parser.add_argument(
+        "--replacement-check", choices=["full", "quick"], default="full",
+        help="how each replacement is proved to play before anything is parked: "
+             "full (sampled, listed and decoded; the default) or quick (not "
+             "decoded). There is no way to skip it",
+    )
     add_service_arguments(parser)
     add_write_arguments(parser)
     parser.set_defaults(handler=_swap)
@@ -492,6 +498,9 @@ def _swap(args: argparse.Namespace, config: Config) -> int:
         controller=controller,
         parked=args.parked, chunk_gib=args.chunk_gib,
         users=args.user, mib_per_second=args.rate, budget_s=args.budget,
+        replacement_check=swap_module.default_replacement_check(
+            decode=args.replacement_check == "full"
+        ),
     )
     print(report)
     return 0 if report.ok else 1
@@ -511,6 +520,12 @@ def _register_delete(subparsers: argparse._SubParsersAction) -> None:  # type: i
                         help="a user whose play state is checked "
                         "(default: every user the server lists)")
     parser.add_argument("--audit", type=Path, metavar="PATH")
+    parser.add_argument(
+        "--keeper-check", choices=["full", "quick"], default="full",
+        help="how the kept copy's payload is proved before a copy is removed: "
+             "full (sampled, listed and decoded; the default) or quick (not "
+             "decoded). There is no way to skip it",
+    )
     add_write_arguments(parser)
     parser.set_defaults(handler=_delete)
 
@@ -520,6 +535,7 @@ def _delete(args: argparse.Namespace, config: Config) -> int:
         client_from(args, config), load_manifest(args.manifest),
         allowed_categories=args.release, parked=args.parked,
         users=args.user, audit=args.audit, backup_folders=args.backup_folders,
+        keeper_check=default_keeper_check(decode=args.keeper_check == "full"),
     )
     print(report)
     return 1 if report.refused else 0

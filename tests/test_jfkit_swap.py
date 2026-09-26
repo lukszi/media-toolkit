@@ -22,6 +22,7 @@ import pytest
 from jfkit.dto import fetch
 from jfkit.service import ManualServiceController
 from jfkit.swap import Pair, chunks, expected_streams, replay_play_state, swap
+from mkvkit.integrity import IntegrityReport
 
 from tests.fake_server import (
     ITEMS,
@@ -32,6 +33,7 @@ from tests.fake_server import (
     client_for,
     fake_server,
 )
+from tests.stand_ins import payload_is_a_stand_in
 
 FIRST = ITEMS[0]["Id"]
 SECOND = ITEMS[1]["Id"]
@@ -41,6 +43,12 @@ SECOND = ITEMS[1]["Id"]
 def server() -> Iterator[tuple[str, Recorder]]:
     with fake_server() as running:
         yield running
+
+
+@pytest.fixture(autouse=True)
+def _replacements_are_stand_ins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These files are bytes, not media; the payload tests are at the end."""
+    payload_is_a_stand_in(monkeypatch)
 
 
 @pytest.fixture
@@ -485,3 +493,54 @@ def test_the_dry_run_says_when_the_users_cannot_be_listed(
     )
     assert not report.ok
     assert "listed no users" in str(report)
+
+
+# ------------------------------------------------ the replacement must play
+def test_a_replacement_that_does_not_play_is_refused_before_anything_stops(
+    server: tuple[str, Recorder], tmp_path: Path
+) -> None:
+    """Every replacement is read before the first outage, and read once."""
+    events: list[str] = []
+
+    def confirm(prompt: str) -> bool:
+        events.append("stop" if prompt.startswith("Stop") else "start")
+        return True
+
+    def empty_inside(path: Path) -> IntegrityReport:
+        events.append(f"read {path.name}")
+        if path.name == "two.mkv":
+            return IntegrityReport(path=path, problems=("stream 0 covers 2% of it",))
+        return IntegrityReport(path=path)
+
+    url, recorder = server
+    client = client_for(url, dry_run=False)
+    one = pair(tmp_path, FIRST, "one.mkv", recorder=recorder)
+    two = pair(tmp_path, SECOND, "two.mkv", recorder=recorder)
+    report = swap(
+        client, [one, two],
+        controller=ManualServiceController(name="the stand-in", confirm=confirm),
+        parked=tmp_path / "parked", sleep=no_sleep, poll_s=0.0, check=opens_fine,
+        replacement_check=empty_inside, chunk_gib=1e-9, stop_on_problem=False,
+    )
+    assert events[:2] == ["read one.mkv", "read two.mkv"], "read before any outage"
+    assert events.count("read two.mkv") == 1
+    refused = next(o for o in report.outcomes if o.pair.item_id == SECOND)
+    assert any("payload is not there" in p for p in refused.problems)
+    assert two.keeper.read_bytes() == b"o" * 16, "the original stays live"
+
+
+def test_the_dry_run_names_a_replacement_it_cannot_check(
+    server: tuple[str, Recorder], tmp_path: Path, controller: ManualServiceController
+) -> None:
+    url, recorder = server
+
+    def unmeasurable(path: Path) -> IntegrityReport:
+        return IntegrityReport(path=path, evidence=False, problems=("no ffprobe",))
+
+    report = swap(
+        client_for(url), [pair(tmp_path, FIRST, "one.mkv", recorder=recorder)],
+        controller=controller, parked=tmp_path / "parked",
+        replacement_check=unmeasurable,
+    )
+    assert not report.ok
+    assert any("no evidence" in p for p in report.outcomes[0].problems)

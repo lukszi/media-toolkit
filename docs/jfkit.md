@@ -264,17 +264,22 @@ statement that was not written down as a named operation with a precondition.
 
 See `docs/methods/swap-procedure.md`. The short version: the path does not
 change, so the identity does not change; nobody is watching; the service is
-stopped per chunk and the chunks are sized in bytes; the original is parked,
-never deleted; the file that arrived is read again rather than weighed; and
-the verification is a comparison of the record, not of the size.
+stopped per chunk and the chunks are sized in bytes; every replacement is
+proved to play before the first outage (`--replacement-check full|quick`); the
+original is parked, never deleted; the file that arrived is read again rather
+than weighed; and the verification is a comparison of the record, not of the
+size.
 
 ## `jfkit.safedelete` -- evidence first
 
 See `docs/methods/safe-deletion.md`. The short version: nothing is deletable
 until somebody names a category as released; every precondition is checked
-against the world rather than against the manifest; nothing is deleted, things
-are moved; the row goes after the file has arrived; and every step is logged,
-including the ones that did nothing.
+against the world rather than against the manifest; where a copy goes because
+another is kept, the kept copy's payload is read and decoded first
+(`--keeper-check full|quick`), and a kept copy that fails or cannot be checked
+refuses the candidate; nothing is deleted, things are moved; the row goes after
+the file has arrived; and every step is logged, including the ones that did
+nothing.
 
 ## `jfkit.segments` and `jfkit.jobs`
 

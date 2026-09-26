@@ -51,7 +51,9 @@ against what the manifest asserts:
 - a named twin or kept item is not the candidate itself -- not the same
   identifier, not the same file under another spelling. A file is always
   identical to itself;
-- whatever the category requires is true right now.
+- whatever the category requires is true right now;
+- where a copy is removed because another is kept -- a twin, a superseded
+  copy, a rebuild's donor -- **the kept copy is proved to play** (section 3).
 
 A manifest written last week describes a library that has since been renamed,
 rescanned and half rebuilt. A precondition that reads the manifest back to
@@ -67,6 +69,23 @@ that one" in the order that costs least:
 
 A comparison that starts by hashing two files of different sizes is a slow way
 to learn something that was available immediately.
+
+### Prove the kept copy plays
+
+Removing a copy because another is kept is only as safe as the kept one.
+Its header proves nothing about it: a file whose body was reserved and never
+written keeps a perfect header, and every comparison that reads headers --
+container, tracks, languages, channels, duration -- prefers it, because it
+claims the higher resolution. Keep it on that evidence and the copy that
+plays is the one that goes.
+
+So before anything moves, the kept file's **payload** is read
+(`mkvkit.integrity`): a sampled zero-fill read, a scan of every packet
+against the container's duration, and a full decode. A kept copy that fails
+refuses the candidate; so does one that could not be checked at all -- no
+evidence is not a pass. `--keeper-check quick` leaves the decode out; nothing
+leaves the check out. The kept file is read once per run however many
+candidates name it, and the result goes into the audit log.
 
 ## 4. A path that is not there has usually moved
 

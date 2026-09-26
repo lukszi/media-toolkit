@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from jfkit import safedelete as safedelete_module
 from jfkit.safedelete import (
     CATEGORIES,
     Candidate,
@@ -35,6 +36,7 @@ from jfkit.safedelete.evidence import (
     remap_path,
     sha256_of,
 )
+from mkvkit.integrity import IntegrityReport
 
 from tests.fake_server import (
     ITEMS,
@@ -54,6 +56,25 @@ SECOND = ITEMS[1]["Id"]
 def server() -> Iterator[tuple[str, Recorder]]:
     with fake_server() as running:
         yield running
+
+
+def _stand_in_plays(path: Path) -> IntegrityReport:
+    return IntegrityReport(path=Path(path), notes=("a stand-in: this test is not about it",))
+
+
+@pytest.fixture(autouse=True)
+def _kept_copies_are_stand_ins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The kept copies in these tests are a few bytes of text, not media.
+
+    Every test here is about something other than whether the kept copy
+    plays, so the payload check is replaced by one that says it does. The
+    tests of that check -- at the end of this file -- pass their own, or run
+    the real one on real media.
+    """
+    monkeypatch.setattr(
+        safedelete_module, "default_keeper_check",
+        lambda *, decode=True: _stand_in_plays,
+    )
 
 
 @pytest.fixture
@@ -675,3 +696,147 @@ def test_a_file_a_swap_parked_is_refused_every_time(
         assert report.refused and not report.allowed
         assert "the catalogue's path is the manifest's path" in str(report)
     assert parked_original.read_bytes() == b"the original"
+
+
+# ------------------------------------------------------- the kept copy plays
+def zeroed_copy(source: Path, target: Path) -> Path:
+    """A copy whose header survives and whose body is zeros."""
+    data = bytearray(source.read_bytes())
+    head, tail = 32 << 10, 16 << 10
+    data[head:len(data) - tail] = bytes(len(data) - tail - head)
+    target.write_bytes(bytes(data))
+    return target
+
+
+@pytest.mark.needs_ffmpeg
+def test_a_kept_copy_that_is_mostly_zeros_refuses_the_deletion(
+    server: tuple[str, Recorder], tmp_path: Path, media_fixtures: dict[str, Path]
+) -> None:
+    """The loss this check exists for.
+
+    Two copies of one episode. The larger one's header claims everything a
+    header can -- container, tracks, duration -- and its body was never
+    written. Kept on the strength of its header, it would have cost the only
+    copy that plays. Here it is read, and the smaller copy stays.
+    """
+    url, recorder = server
+    small = tmp_path / "Harbour Lights" / "Harbour Lights - S02E05 (360p).mp4"
+    large = tmp_path / "Harbour Lights" / "Harbour Lights - S02E05 (1080p).mkv"
+    small.parent.mkdir(parents=True)
+    small.write_bytes(media_fixtures["tiny_multitrack.mp4"].read_bytes())
+    zeroed_copy(media_fixtures["tiny_multitrack.mkv"], large)
+    recorder.items[0]["Path"] = str(small)
+    recorder.items[1]["Path"] = str(large)
+
+    report = safe_delete(
+        client_for(url, dry_run=False),
+        [Candidate(item_id=FIRST, path=small, category="superseded-copy",
+                   keeper_id=SECOND)],
+        allowed_categories=["superseded-copy"], parked=tmp_path / "parked",
+        audit=tmp_path / "audit.log",
+        keeper_check=safedelete_module.integrity.check,
+    )
+    assert report.refused and not report.allowed
+    [refusal] = [c for c in report.refused[0].refusals
+                 if c.name == safedelete_module.KEPT_COPY_PLAYS]
+    assert "has packets for" in refusal.detail
+    assert small.is_file(), "the copy that plays is still where it was"
+    assert "kept copy:" in (tmp_path / "audit.log").read_text(encoding="utf-8")
+
+
+@pytest.mark.needs_ffmpeg
+def test_a_kept_copy_that_plays_lets_the_deletion_through(
+    server: tuple[str, Recorder], tmp_path: Path, media_fixtures: dict[str, Path]
+) -> None:
+    url, recorder = server
+    small = tmp_path / "Harbour Lights" / "Harbour Lights - S02E05 (360p).mp4"
+    large = tmp_path / "Harbour Lights" / "Harbour Lights - S02E05 (1080p).mkv"
+    small.parent.mkdir(parents=True)
+    small.write_bytes(media_fixtures["tiny_multitrack.mp4"].read_bytes())
+    large.write_bytes(media_fixtures["tiny_multitrack.mkv"].read_bytes())
+    recorder.items[0]["Path"] = str(small)
+    recorder.items[1]["Path"] = str(large)
+    report = safe_delete(
+        client_for(url), [Candidate(item_id=FIRST, path=small, category="superseded-copy",
+                                    keeper_id=SECOND)],
+        allowed_categories=["superseded-copy"], parked=tmp_path / "parked",
+        keeper_check=safedelete_module.integrity.check,
+    )
+    assert report.allowed and not report.refused
+
+
+@pytest.mark.parametrize("category", ["byte-identical-twin", "superseded-copy",
+                                      "rebuild-donor"])
+def test_no_evidence_about_the_kept_copy_refuses_the_deletion(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path, category: str
+) -> None:
+    """A check that could not run is not a check that passed."""
+    url, _ = server
+
+    def unmeasurable(path: Path) -> IntegrityReport:
+        return IntegrityReport(path=path, evidence=False,
+                               problems=("the demuxer could not read the file",))
+
+    report = safe_delete(
+        client_for(url), [candidate(tree, category=category, keeper_id=SECOND)],
+        allowed_categories=[category], parked=tmp_path / "parked",
+        keeper_check=unmeasurable,
+    )
+    assert report.refused and not report.allowed
+    names = [c.name for c in report.refused[0].refusals]
+    assert names == [safedelete_module.KEPT_COPY_PLAYS]
+    assert "no evidence" in report.refused[0].refusals[0].detail
+
+
+def test_a_check_that_raises_refuses_the_deletion(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    url, _ = server
+
+    def broken(path: Path) -> IntegrityReport:
+        raise RuntimeError("the program crashed")
+
+    report = safe_delete(
+        client_for(url), [candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+        keeper_check=broken,
+    )
+    assert report.refused and "could not run" in report.refused[0].refusals[0].detail
+
+
+def test_the_kept_copy_is_read_once_however_many_candidates_name_it(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    url, _ = server
+    seen: list[Path] = []
+
+    def counting(path: Path) -> IntegrityReport:
+        seen.append(path)
+        return IntegrityReport(path=path)
+
+    safe_delete(
+        client_for(url), [candidate(tree), candidate(tree)],
+        allowed_categories=["byte-identical-twin"], parked=tmp_path / "parked",
+        keeper_check=counting,
+    )
+    assert seen == [tree / "two" / "two.mkv"]
+
+
+def test_a_candidate_refused_already_is_not_decoded_for_nothing(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    url, _ = server
+    seen: list[Path] = []
+
+    def counting(path: Path) -> IntegrityReport:
+        seen.append(path)
+        return IntegrityReport(path=path)
+
+    report = safe_delete(
+        client_for(url), [candidate(tree)],
+        allowed_categories=["media-free-folder"], parked=tmp_path / "parked",
+        keeper_check=counting,
+    )
+    assert seen == [] and report.refused
+    assert any(c.name == safedelete_module.KEPT_COPY_PLAYS
+               for c in report.refused[0].refusals)

@@ -130,6 +130,12 @@ The procedure around a release:
   candidate now; check the play state of every account on the server, not just
   yours; walk the folder for the things that travel with a media file and are
   easy to forget -- sidecars, artwork, generated preview data.
+- **Prove the keeper plays.** Where one copy goes because another stays,
+  read the payload of the one that stays -- a sampled read for zero-filled
+  space, every packet against the container's duration, and a full decode --
+  before anything moves. Headers are what a broken file keeps intact, and a
+  comparison of headers prefers the broken copy whenever it claims the
+  higher resolution. A check that could not run is a refusal, not a pass.
 - **Park, never delete.** A released file is *moved* to a parking directory
   and left there. Space is reclaimed later, by hand, as its own decision. The
   tooling's job is to make deletion safe to decide, not to perform it.

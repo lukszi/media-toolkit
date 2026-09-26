@@ -5,6 +5,20 @@ day the work was done.
 
 ## Unreleased
 
+### Added
+
+- **`delete` proves the kept copy plays.** Before a twin, a superseded copy
+  or a rebuild's donor is parked, the payload of the copy that is kept is
+  read with `mkvkit integrity` -- sampled, listed and, by default, decoded
+  (`--keeper-check full|quick`). A kept copy that fails, or that cannot be
+  checked, refuses the candidate: every earlier check compared headers,
+  which a file that was never filled keeps intact. Each kept file is read
+  once per run and its report goes into the audit log.
+- **`swap` proves every replacement plays, before the first outage.** Each
+  replacement is read once, before any chunk stops the service, and a pair
+  whose replacement fails or cannot be checked is refused
+  (`--replacement-check full|quick`).
+
 ### Fixed
 
 - **`jfkit delete --apply` no longer asks the server to delete the item.**

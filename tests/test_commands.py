@@ -285,8 +285,11 @@ def test_swap_needs_a_parking_directory(capsys: pytest.CaptureFixture[str]) -> N
 
 
 def test_swap_without_apply_moves_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from tests.stand_ins import payload_is_a_stand_in
+
+    payload_is_a_stand_in(monkeypatch)  # the "rebuild" here is a few bytes of text
     keeper = tmp_path / "live" / "example.mkv"
     keeper.parent.mkdir()
     keeper.write_bytes(b"the original")

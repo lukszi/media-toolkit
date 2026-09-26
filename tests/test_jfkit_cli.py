@@ -493,8 +493,11 @@ def test_listing_tasks_says_which_is_running(
 
 def test_a_swap_plan_is_read_and_reported_without_moving_anything(
     configured: Path, server: tuple[str, Recorder], tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from tests.stand_ins import payload_is_a_stand_in
+
+    payload_is_a_stand_in(monkeypatch)  # the "rebuild" here is a few bytes of text
     _, recorder = server
     live = tmp_path / "live" / "one.mkv"
     rebuilt = tmp_path / "staging" / "one.mkv"
