@@ -8,10 +8,14 @@ requires-python = ">=3.11"
 members = ["packages/*"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "mypy>=1.11"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages"]
+# In parallel by default (pytest-xdist, in the dev group); `-n 0` runs it in
+# one process, which is what a debugger wants. How many workers "auto" means
+# is capped in tests/conftest.py.
+addopts = ["-n", "auto"]
 # so a checkout runs its tests before anything is installed
 pythonpath = [
   "packages/mkvkit/src",

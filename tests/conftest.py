@@ -9,6 +9,7 @@ a report that still means something.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -42,6 +43,22 @@ def pytest_configure(config: pytest.Config) -> None:
         "slow: takes more than a few seconds",
     ):
         config.addinivalue_line("markers", marker)
+
+
+#: The most workers ``-n auto`` starts. Past this the suite gets no faster:
+#: each worker imports and collects everything before it runs a test, and the
+#: longest single tests set the floor anyway.
+MAX_AUTO_WORKERS = 8
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    """``-n auto``: one worker per processor, up to ``MAX_AUTO_WORKERS``.
+
+    ``PYTEST_XDIST_AUTO_NUM_WORKERS`` in the environment still wins; pytest-xdist
+    reads it before it asks this hook.
+    """
+    return max(1, min(os.cpu_count() or 1, MAX_AUTO_WORKERS))
 
 
 def pytest_collection_modifyitems(
