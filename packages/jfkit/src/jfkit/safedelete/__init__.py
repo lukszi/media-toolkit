@@ -76,6 +76,7 @@ from typing import Any
 from mkvkit import integrity
 from mkvkit.integrity import IntegrityReport
 from mkvkit.sidecars import VIDEO_SUFFIXES, SidecarKind, SidecarSet, sidecars_of
+from mkvkit.transfer import parked_relative
 from mkvkit.walk import walk
 
 from ..client import Client
@@ -117,6 +118,8 @@ __all__ = [
     "Outcome",
     "default_keeper_check",
     "load_manifest",
+    "parked_location",
+    "parked_relative",
     "preconditions",
     "resolve_users",
     "safe_delete",
@@ -806,10 +809,7 @@ def _park_and_remove(
     writer: _Audit,
 ) -> Outcome:
     size = candidate.size
-    relative = (
-        Path(*candidate.path.parts[1:]) if candidate.path.is_absolute()
-        else candidate.path
-    )
+    relative = parked_relative(candidate.path)
     destination = parked / relative
     if destination.exists():
         writer.line(f"{candidate.item_id} REFUSED something is already parked there")
@@ -872,10 +872,10 @@ def _park_and_remove(
     )
 
 
-def parked_location(parked: Path, path: Path) -> Path:
-    """Where a path lands in the parking directory: its layout, anchor dropped."""
-    relative = Path(*path.parts[1:]) if path.is_absolute() else path
-    return parked / relative
+def parked_location(parked: Path | str, path: Path | str) -> Path:
+    """Where a path lands in the parking directory, drive letter kept
+    (:func:`mkvkit.transfer.parked_relative`)."""
+    return Path(parked) / parked_relative(path)
 
 
 def _parked_size(parked: Path, original: Path) -> int:

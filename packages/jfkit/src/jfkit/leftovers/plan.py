@@ -45,7 +45,7 @@ from mkvkit.walk import walk
 
 from ..client import Client
 from ..refresh import NotifyRefused, library_roots, notify_changed
-from ..safedelete import Candidate, Check, preconditions
+from ..safedelete import Candidate, Check, parked_location, preconditions
 from ..safedelete.catalogue import Catalogue, path_key
 from ..safedelete.evidence import identical
 from ..safedelete.junk import DEFAULT_RULES, Rules
@@ -74,11 +74,7 @@ def park_target(parked: Path | str, path: Path | str) -> Path:
     ``C:/Media/Movies/x`` lands at ``<parked>/C/Media/Movies/x``; a path without a drive
     keeps its layout below the parking directory.
     """
-    here = Path(path)
-    base = Path(parked)
-    drive = here.drive.replace(":", "").strip("\\/").replace("\\", "_").replace("/", "_")
-    rest = here.parts[1:] if here.anchor else here.parts
-    return base.joinpath(drive, *rest) if drive else base.joinpath(*rest)
+    return parked_location(parked, path)
 
 
 @dataclass(frozen=True)

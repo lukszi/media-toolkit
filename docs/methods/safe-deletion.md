@@ -151,8 +151,12 @@ quiet disk.
 
 ## 6. Nothing is deleted. Things are moved.
 
-The file goes to a parking directory that keeps its layout. It stays there
-until a person decides otherwise, and deciding that is not this tool's job.
+The file goes to a parking directory that keeps its layout, drive letter
+included: `C:/Media/Movies/x` lands at `<parked>/C/Media/Movies/x`, so the
+same path on two disks never meets itself there. Every verb that parks --
+both swaps, `delete`, `dedupe` and `leftovers` -- uses this one layout. It
+stays there until a person decides otherwise, and deciding that is not this
+tool's job.
 
 The server is never asked to delete the item. On this server
 `DELETE /Items/{id}` removes the item's **containing folder** from disk --

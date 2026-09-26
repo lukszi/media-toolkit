@@ -43,6 +43,7 @@ from .config import Config
 from .integrity import IntegrityReport
 from .probe import probe
 from .run import Runner, default_runner
+from .transfer import parked_relative
 
 __all__ = [
     "PayloadCheck",
@@ -119,11 +120,11 @@ def parked_path(keeper: Path, parked_dir: Path) -> Path:
     """Where the original goes: the parking directory, keeping its own layout.
 
     The layout is kept because a directory of hundreds of files all called
-    the same thing as each other is not a backup, it is a puzzle. The root of
-    the original path is dropped, since a root is a property of one machine.
+    the same thing as each other is not a backup, it is a puzzle. The drive
+    letter is kept as a folder (:func:`mkvkit.transfer.parked_relative`), so
+    the same path on two disks never meets itself there.
     """
-    relative = Path(*keeper.parts[1:]) if keeper.is_absolute() else keeper
-    return parked_dir / relative
+    return parked_dir / parked_relative(keeper)
 
 
 def probe_check(

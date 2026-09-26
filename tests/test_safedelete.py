@@ -17,6 +17,7 @@ somewhere, because a row removed first leaves a file nothing knows about.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -26,6 +27,8 @@ from jfkit.safedelete import (
     CATEGORIES,
     Candidate,
     load_manifest,
+    parked_location,
+    parked_relative,
     preconditions,
     safe_delete,
 )
@@ -37,6 +40,7 @@ from jfkit.safedelete.evidence import (
     sha256_of,
 )
 from mkvkit.integrity import IntegrityReport
+from mkvkit.swap import parked_path as swap_parked_path
 
 from tests.fake_server import (
     ITEMS,
@@ -382,7 +386,7 @@ def test_nothing_is_parked_over_something_already_there(
     """The copy somebody may still need is not overwritten by the next one."""
     url, recorder = server
     parked = tmp_path / "parked"
-    already = parked / Path(*(tree / "one" / "one.mkv").parts[1:])
+    already = parked_location(parked, tree / "one" / "one.mkv")
     already.parent.mkdir(parents=True)
     already.write_bytes(b"an earlier parked copy")
 
@@ -393,6 +397,30 @@ def test_nothing_is_parked_over_something_already_there(
     assert report.refused
     assert already.read_bytes() == b"an earlier parked copy"
     assert recorder.deleted == []
+
+
+def test_a_parked_path_keeps_its_layout_below_the_parking_directory() -> None:
+    assert parked_relative(Path("/srv/media/one/one.mkv")) == Path("srv/media/one/one.mkv")
+    assert parked_relative(Path("media/one.mkv")) == Path("media/one.mkv")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="drive letters are a Windows thing")
+def test_the_parking_directory_keeps_the_drive_letter(tmp_path: Path) -> None:
+    """One layout for every verb that parks, and it keeps the drive letter.
+
+    ``delete`` and the swaps used to drop it while ``leftovers`` kept it.
+    Dropped, the same library path on two disks lands on one place in the
+    parking directory, the second park is refused, and the parked tree no
+    longer says which disk a file came from. ``delete``, ``dedupe``,
+    ``leftovers`` and both swaps now share :func:`parked_relative`.
+    """
+    here = "C:/Media/Movies/x.mkv"
+    there = "Z" + here[1:]  # the same path on another disk
+    assert parked_relative(here) == Path("C/Media/Movies/x.mkv")
+    assert parked_relative(there) == Path("Z/Media/Movies/x.mkv")
+    assert parked_location(tmp_path, here) != parked_location(tmp_path, there)
+    assert parked_relative("//host/share/x.mkv") == Path("host_share/x.mkv")
+    assert swap_parked_path(Path(here), tmp_path) == tmp_path / "C/Media/Movies/x.mkv"
 
 
 def test_the_rest_of_the_folder_is_copied_aside_first(

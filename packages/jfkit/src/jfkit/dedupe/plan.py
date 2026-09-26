@@ -55,7 +55,7 @@ from ..client import Client
 from ..query import playstate
 from ..query import users as list_users
 from ..refresh import library_roots, notify_changed
-from ..safedelete import Candidate, safe_delete
+from ..safedelete import Candidate, parked_relative, safe_delete
 from ..safedelete.evidence import loose_tracks, media_free
 from .resolver import Verdict, default_checker
 from .rules import SAFE
@@ -94,10 +94,10 @@ VERB = "jfkit dedupe"
 
 
 def parked_path(path: Path | str, parked: Path | str) -> Path:
-    """Where ``path`` goes: its layout below ``parked``, on its own volume if relative."""
+    """Where ``path`` goes: its layout below ``parked``, drive letter kept
+    (:func:`jfkit.safedelete.parked_relative`), on its own volume if relative."""
     here = Path(path)
-    relative = Path(*here.parts[1:]) if here.is_absolute() else here
-    return _parked_root(here, parked) / relative
+    return _parked_root(here, parked) / parked_relative(here)
 
 
 def _parked_root(path: Path, parked: Path | str) -> Path:

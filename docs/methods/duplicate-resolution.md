@@ -196,7 +196,8 @@ in this order across all groups:
    gone. A folder directly under a library folder makes the server look at
    that whole library again; the plan says so beforehand.
 
-Parking keeps the layout: `<volume>/a/b/c` goes to `<parked>/a/b/c`. A
+Parking keeps the layout, drive letter included: `C:/Media/Movies/x` goes to
+`<parked>/C/Media/Movies/x`, the layout every verb that parks uses. A
 relative parking folder is taken on each file's own volume, so a park is a
 rename and never a copy between disks.
 

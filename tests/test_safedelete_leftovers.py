@@ -23,7 +23,13 @@ from pathlib import Path, PurePath
 from typing import Any
 
 import pytest
-from jfkit.safedelete import CATEGORIES, Candidate, preconditions, safe_delete
+from jfkit.safedelete import (
+    CATEGORIES,
+    Candidate,
+    parked_location,
+    preconditions,
+    safe_delete,
+)
 from jfkit.safedelete.catalogue import Catalogue
 from jfkit.safedelete.junk import DEFAULT_RULES, Kind, classify, load_rules
 from jfkit.safedelete.leftovers import (
@@ -336,7 +342,7 @@ def test_an_unplayable_file_parks_with_its_sidecars_and_evidence(
     assert not video.exists()
     for sidecar in sidecars:
         assert not sidecar.exists(), sidecar
-        assert (tmp_path / "parked" / Path(*sidecar.parts[1:])).exists()
+        assert parked_location(tmp_path / "parked", sidecar).exists()
     assert (video.parent / "Harbour Lights - S02E06.mkv").is_file()
     text = audit.read_text(encoding="utf-8")
     assert "all zeros (98%)" in text, "the evidence is in the audit"

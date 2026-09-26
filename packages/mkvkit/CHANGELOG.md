@@ -79,6 +79,9 @@ and not say so.
 
 ### Changed
 
+- **`swap` parks the original under its drive letter.** `C:/Media/Movies/x`
+  goes to `<parked>/C/Media/Movies/x`, not `<parked>/Media/Movies/x`, the layout every verb
+  that parks now shares (`transfer.parked_relative`).
 - **`remux --apply` verifies what it built.** Both files are hashed stream by
   stream and compared against the rebuild's own plan before the command
   exits; a rebuild that does not verify exits 1 and is left in staging. The

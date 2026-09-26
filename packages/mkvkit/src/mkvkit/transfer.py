@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CHUNK", "CopyReport", "digest_of", "verified_copy"]
+__all__ = ["CHUNK", "CopyReport", "digest_of", "parked_relative", "verified_copy"]
 
 log = logging.getLogger(__name__)
 
@@ -265,3 +265,19 @@ def _with(base: CopyReport, **changes: Any) -> CopyReport:
         if key in changes:
             changes[key] = tuple(changes[key])
     return dataclasses.replace(base, **changes)
+
+
+def parked_relative(path: Path | str) -> Path:
+    """A path's place below a parking directory: its layout, drive letter kept.
+
+    ``C:/Media/Movies/x`` becomes ``C/Media/Movies/x`` and a share's
+    ``//host/share/x`` becomes ``host_share/x``, so two library folders with
+    the same path on two drives never meet in one parking directory. A path
+    with no drive -- a POSIX path, or a relative one -- keeps its layout.
+    Every verb that parks uses this: ``mkvkit swap`` and ``jfkit swap`` for
+    the original, and ``jfkit delete``, ``dedupe`` and ``leftovers``.
+    """
+    here = Path(path)
+    drive = here.drive.replace(":", "").strip("\\/").replace("\\", "_").replace("/", "_")
+    rest = here.parts[1:] if here.anchor else here.parts
+    return Path(drive, *rest) if drive else Path(*rest)

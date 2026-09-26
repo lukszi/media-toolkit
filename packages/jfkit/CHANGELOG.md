@@ -99,6 +99,11 @@ day the work was done.
 
 ### Fixed
 
+- **One parking layout, drive letter kept.** `delete` and `swap` dropped
+  the drive of a parked path while `leftovers` kept it, so the same library
+  path on two disks landed on one place and the second park was refused.
+  Every verb that parks now keeps it (`C:/Media/Movies/x` goes to
+  `<parked>/C/Media/Movies/x`), through `mkvkit.transfer.parked_relative`.
 - **`dedupe` and `leftovers` wait on the whole gate.** Both asked the old
   gate only about named readers and running tasks, so a disk somebody was
   playing from, a reader whose command line is hidden, or a lock file did

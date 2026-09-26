@@ -50,7 +50,7 @@ from jfkit.dedupe import (
     segment_of,
 )
 from jfkit.dedupe.facts import origin_of
-from jfkit.safedelete import Candidate, safe_delete
+from jfkit.safedelete import Candidate, parked_relative, safe_delete
 from jfkit.surveys import build
 from mkvkit.config import ConfigError, DedupePolicy, loads
 from mkvkit.integrity import IntegrityReport
@@ -846,9 +846,8 @@ def test_a_park_refuses_when_the_keeper_changed_since_the_plan(
 
 def test_a_relative_parking_folder_is_on_each_files_own_volume(tmp_path: Path) -> None:
     here = tmp_path / "a" / "b.mkv"
-    assert parked_path(here, "_parked") == Path(here.anchor) / "_parked" / Path(
-        *here.parts[1:])
-    assert parked_path(here, tmp_path / "p") == tmp_path / "p" / Path(*here.parts[1:])
+    assert parked_path(here, "_parked") == Path(here.anchor) / "_parked" / parked_relative(here)
+    assert parked_path(here, tmp_path / "p") == tmp_path / "p" / parked_relative(here)
 
 
 def test_merging_states_takes_the_most_of_each() -> None:
