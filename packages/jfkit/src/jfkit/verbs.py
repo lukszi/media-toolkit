@@ -8,6 +8,10 @@ onto new identifiers through a mapping and verifies it; its replay is a plan
 (printed by the dry run, saved with ``--plan-out``) applied with an audit and
 resumable after a partial failure.
 
+``leftovers sweep`` proposes release junk, dead release folders, samples
+and unplayable files and parks the released categories through a plan;
+``leftovers missing`` reports what the library lacks (:mod:`jfkit.leftovers`).
+
 ``playstate`` and every ``userdata`` verb take ``--jobs N``: how many requests
 run at once, default :data:`mkvkit.lanes.DEFAULT_WORKERS`.
 """
@@ -28,6 +32,7 @@ from . import query
 from . import userdata as userdata_module
 from .commands import LIST_HELP, add_write_arguments, client_from, expand_lists
 from .config import Config
+from .leftovers.cli import register as _register_leftovers
 
 __all__ = ["REGISTRARS"]
 
@@ -277,4 +282,5 @@ REGISTRARS = {
     "playstate": _register_playstate,
     "userdata": _register_userdata,
     "rename": _register_rename,
+    "leftovers": _register_leftovers,
 }

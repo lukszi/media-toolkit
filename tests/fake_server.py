@@ -20,6 +20,8 @@ precisely because they are the ones that mislead:
   the server is busy, and the two routes that start and stop one;
 * a plugin list and one plugin's configuration, so scoping a pass can be
   tested without any plugin being installed anywhere;
+* an ``IsMissing`` filter on the collection route, answered from rows marked
+  ``LocationType`` ``Virtual``: episodes known only from a provider;
 * a user list with more than one user in it, and a switch that makes it fail,
   so a play-state check that consults nobody has somebody to miss;
 * the difference between the two ways a row can leave the catalogue. Deleting
@@ -514,6 +516,11 @@ class _Handler(BaseHTTPRequestHandler):
             # compare as text
             since = lowered["mindatelastsaved"]
             rows = [row for row in rows if str(row.get("DateLastSaved") or "") >= since]
+        if "ismissing" in lowered:
+            # a row is missing when the server knows it only from its provider
+            wanted = lowered["ismissing"].lower() == "true"
+            rows = [row for row in rows
+                    if (row.get("LocationType") == "Virtual") == wanted]
         if "searchterm" in lowered:
             term = lowered["searchterm"].casefold()
             rows = [row for row in rows if term in str(row.get("Name", "")).casefold()]
