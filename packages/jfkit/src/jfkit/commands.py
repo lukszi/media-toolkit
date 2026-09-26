@@ -53,6 +53,7 @@ from .jobs import RECENT_WINDOW_S, Gate, GateTimeout, observe, server_view, wait
 from .report import FORMATS
 from .report import write as write_survey
 from .safedelete import default_keeper_check, load_manifest, safe_delete
+from .safedelete.junk import load_rules
 from .service import ServiceControlError, ServiceController, controller_for
 
 __all__ = [
@@ -547,7 +548,10 @@ def _swap(args: argparse.Namespace, config: Config) -> int:
 # ------------------------------------------------------------------ delete
 def _register_delete(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     parser = subparsers.add_parser(
-        "delete", help="park what a named category released, after checking each one"
+        "delete", help="park what a named category released, after checking each one",
+        epilog="The leftover categories (release-junk, dead-release-folder, "
+               "corrupt-unplayable, sample) take an empty item_id; "
+               "'jfkit leftovers sweep' proposes them from a walk of the library.",
     )
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--release", action="append", default=[], metavar="CATEGORY",
@@ -564,6 +568,14 @@ def _register_delete(subparsers: argparse._SubParsersAction) -> None:  # type: i
              "full (sampled, listed and decoded; the default) or quick (not "
              "decoded). There is no way to skip it",
     )
+    parser.add_argument(
+        "--integrity", choices=["full", "quick"], default="full",
+        help="how a corrupt-unplayable candidate is measured: full (sampled, "
+             "listed and decoded; the default) or quick (not decoded)",
+    )
+    parser.add_argument("--rules", type=Path, metavar="FILE",
+                        help="a TOML file whose [leftovers] table widens or replaces "
+                             "the junk rules")
     add_write_arguments(parser)
     parser.set_defaults(handler=_delete)
 
@@ -574,6 +586,8 @@ def _delete(args: argparse.Namespace, config: Config) -> int:
         allowed_categories=args.release, parked=args.parked,
         users=args.user, audit=args.audit, backup_folders=args.backup_folders,
         keeper_check=default_keeper_check(decode=args.keeper_check == "full"),
+        rules=load_rules(args.rules),
+        integrity_check=default_keeper_check(decode=args.integrity == "full"),
     )
     print(report)
     return 1 if report.refused else 0

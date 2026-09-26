@@ -207,10 +207,14 @@ def folder_contents(
     if not folder.is_dir():
         return FolderContents(folder, notes=("the folder is not there",))
 
-    for entry in sorted(folder.rglob("*")):
-        if not entry.is_file() or entry == here:
+    # The walk enters no link or junction; what it left out is said, since a
+    # folder with something unseen in it is not one to remove whole.
+    tree = walk(folder)
+    for found in sorted(tree, key=lambda e: e.path):
+        entry = found.path
+        if entry == here:
             continue
-        total += entry.stat().st_size
+        total += found.size or 0
         suffix = entry.suffix.lower()
         if suffix in sidecar_kinds and entry.stem.casefold().startswith(stem[:40]):
             belongs.append(entry)
@@ -226,6 +230,12 @@ def folder_contents(
         notes.append(
             "another media file is in this folder: removing the folder would take "
             "it too, and it belongs to a different item"
+        )
+    if tree.skipped:
+        notes.append(
+            f"{len(tree.skipped)} entr(y/ies) in this folder were not looked at "
+            "(a link, a junction or an unreadable folder): "
+            + "; ".join(str(s) for s in tree.skipped[:3])
         )
     return FolderContents(
         folder=folder,

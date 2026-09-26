@@ -35,6 +35,22 @@ The audit file is append-only and is the answer to "what happened to X",
 which is a question that gets asked months later by somebody who was not
 there.
 
+**A leftover has no row, so it is checked against the whole catalogue.** A
+tracker note, a folder of screenshots, a release folder whose video went
+long ago, a video whose payload is gone: none of these is an item the
+server can be asked about. The three leftover categories
+(:mod:`.leftovers`) take no item identifier; instead the catalogue is read
+once and a candidate passes only when nothing catalogued lives at its path
+or below it. ``media-free-folder`` takes the same route when it is given no
+identifier, which is what a release subfolder needs: its path is never any
+item's path.
+
+**A video goes with its sidecars.** Parking a video parks every file that
+belongs to it by the server's own rules (:mod:`mkvkit.sidecars`) -- its
+description file, its pictures, its preview tiles, its subtitles -- so no
+orphan is left for a second, hand-made pass. A folder left with no video
+in it is said so, because it is now a leftover of its own.
+
 **The dry run is the default, and it is the useful one.** It runs every
 precondition, reports every refusal with its reason and totals the bytes, and
 changes nothing. A run that passes its dry run and then fails a precondition
@@ -59,11 +75,15 @@ from typing import Any
 
 from mkvkit import integrity
 from mkvkit.integrity import IntegrityReport
+from mkvkit.sidecars import VIDEO_SUFFIXES, SidecarKind, SidecarSet, sidecars_of
+from mkvkit.walk import walk
 
 from ..client import Client
 from ..dto import every_user, fetch, user_data
 from ..errors import ItemNotFound
 from ..refresh import NotifyRefused, library_roots, notify_changed
+from .catalogue import Catalogue
+from .checks import Check
 from .evidence import (
     FolderContents,
     Identity,
@@ -72,11 +92,24 @@ from .evidence import (
     loose_tracks,
     media_free,
 )
+from .junk import DEFAULT_RULES, Rules
+from .leftovers import (
+    CORRUPT,
+    DEAD_FOLDER,
+    LEFTOVER_CATEGORIES,
+    RELEASE_JUNK,
+    SAMPLE,
+    corrupt_checks,
+    dead_folder_checks,
+    release_junk_checks,
+    sample_checks,
+)
 
 __all__ = [
     "CARRIED_STATE_CATEGORIES",
     "CATEGORIES",
     "KEPT_COPY_CATEGORIES",
+    "LEFTOVER_CATEGORIES",
     "Candidate",
     "Check",
     "DeletionReport",
@@ -103,6 +136,13 @@ CATEGORIES: Mapping[str, str] = {
         "a copy of the same film the owner's rules keep instead, and every "
         "user's watched state is on it"
     ),
+    RELEASE_JUNK: "a tracker note, shortcut, program, padding or screenshot the "
+                  "rules name, with nothing catalogued at or below it",
+    DEAD_FOLDER: "a release folder with no video left, only description files, "
+                 "artwork, preview tiles and junk, and nothing catalogued in it",
+    CORRUPT: "a video whose payload check failed, with evidence, and no other "
+             "catalogued copy to keep",
+    SAMPLE: "a release sample the rules name, which no catalogue row points at",
 }
 
 
@@ -125,20 +165,6 @@ def default_keeper_check(*, decode: bool = True) -> KeeperCheck:
 
 
 @dataclass(frozen=True)
-class Check:
-    """One precondition, its answer, and enough detail to argue with."""
-
-    name: str
-    ok: bool
-    detail: str = ""
-
-    def __str__(self) -> str:
-        return f"{'ok' if self.ok else 'FAIL'}: {self.name}" + (
-            f" -- {self.detail}" if self.detail else ""
-        )
-
-
-@dataclass(frozen=True)
 class Candidate:
     """One thing somebody proposes to delete, and why they think they may."""
 
@@ -150,19 +176,30 @@ class Candidate:
     keeper: Path | None = None
     #: the identifier of the kept item, where the category names one
     keeper_id: str | None = None
+    #: corrupt-unplayable: the payload check already made, if one was
+    integrity: IntegrityReport | None = None
+    #: corrupt-unplayable: (size, modification time in ns) when it was measured
+    measured: tuple[int, int] | None = None
 
     @property
     def size(self) -> int:
-        """What removing this would free. A folder counts everything below it."""
+        """What removing this would free. A folder counts everything below it.
+
+        The walk enters no link or junction: what is behind one is not freed.
+        """
         try:
             if self.path.is_dir():
-                return sum(
-                    entry.stat().st_size
-                    for entry in self.path.rglob("*") if entry.is_file()
-                )
+                return sum(entry.size or 0 for entry in walk(self.path))
             return self.path.stat().st_size
         except OSError:
             return 0
+
+    @property
+    def needs_item(self) -> bool:
+        """Whether this candidate is checked through a catalogue row of its own."""
+        if self.category in LEFTOVER_CATEGORIES or self.category == "media-free-folder":
+            return bool(self.item_id)
+        return True
 
 
 @dataclass(frozen=True)
@@ -247,7 +284,8 @@ def load_manifest(path: Path | str) -> list[Candidate]:
 
     The columns are the fields of :class:`Candidate`. A manifest with a
     category column that nobody released is still read -- the refusal happens
-    where it can be reported, not where it can be silently dropped.
+    where it can be reported, not where it can be silently dropped. The
+    leftover categories may leave ``item_id`` empty.
     """
     here = Path(path)
     text = here.read_text(encoding="utf-8")
@@ -281,8 +319,19 @@ def preconditions(
     allowed_categories: Iterable[str],
     users: Sequence[str] = (),
     keeper_check: KeeperCheck | None = None,
+    catalogue: Catalogue | None = None,
+    rules: Rules = DEFAULT_RULES,
+    integrity_check: KeeperCheck | None = None,
+    roots: Sequence[str] | None = None,
 ) -> tuple[list[Check], FolderContents | None]:
     """Every check for one candidate, against the world as it is now.
+
+    A leftover candidate with no item identifier is checked against
+    ``catalogue`` -- read from the server when it is not given -- instead of
+    a row of its own; ``rules`` say what is junk. ``integrity_check``
+    measures a corrupt-unplayable candidate that carries no report yet
+    (default: the full :func:`mkvkit.integrity.check`, decode included).
+    ``roots`` are the library folders, read from the server when not given.
 
     ``keeper_check`` reads the payload of the copy that is kept, for every
     category that removes one copy because another stays; by default the
@@ -301,6 +350,13 @@ def preconditions(
         candidate.category in released,
         f"{candidate.category!r}; released: {', '.join(sorted(released)) or 'none'}",
     ))
+
+    if not candidate.needs_item:
+        known = catalogue if catalogue is not None else Catalogue.fetch(client)
+        if roots is None and candidate.category == DEAD_FOLDER:
+            roots = library_roots(client) or []
+        checks += _leftover_checks(candidate, known, rules, integrity_check, roots or ())
+        return checks, None
 
     record: dict[str, Any] | None = None
     try:
@@ -326,7 +382,12 @@ def preconditions(
     if candidate.category in CARRIED_STATE_CATEGORIES:
         checks.append(_state_carried_check(client, candidate, users))
     else:
-        checks.append(_play_state_check(client, candidate.item_id, users))
+        play = _play_state_check(client, candidate.item_id, users)
+        if candidate.category == CORRUPT and not play.ok and play.detail:
+            # A file that does not play has nobody's position worth keeping in
+            # it; the row's state is said, and it does not refuse.
+            play = Check(play.name, True, f"reported, not a refusal: {play.detail}")
+        checks.append(play)
 
     contents: FolderContents | None = None
     kept_file: Path | None = None
@@ -348,6 +409,9 @@ def preconditions(
     elif candidate.category in KEPT_COPY_CATEGORIES:
         kept_check, kept_file = _keeper_check(client, candidate)
         checks.append(kept_check)
+    elif candidate.category == CORRUPT:
+        known = catalogue if catalogue is not None else Catalogue.fetch(client)
+        checks += _leftover_checks(candidate, known, rules, integrity_check, ())[1:]
 
     if candidate.category in {"byte-identical-twin", *KEPT_COPY_CATEGORIES}:
         # Removing a copy because another is kept is only safe if the kept one
@@ -372,6 +436,52 @@ def preconditions(
         # deciding for them.
         contents = folder_contents(candidate.path)
     return checks, contents
+
+
+def _leftover_checks(
+    candidate: Candidate,
+    catalogue: Catalogue,
+    rules: Rules,
+    integrity_check: KeeperCheck | None,
+    roots: Sequence[str],
+) -> list[Check]:
+    """The checks of a leftover category, which read the catalogue, not a row."""
+    if candidate.category == RELEASE_JUNK:
+        return release_junk_checks(candidate.path, catalogue, rules=rules)
+    if candidate.category == DEAD_FOLDER:
+        return dead_folder_checks(candidate.path, catalogue, rules=rules, roots=roots)
+    if candidate.category == SAMPLE:
+        return sample_checks(candidate.path, catalogue, rules=rules)
+    if candidate.category == CORRUPT:
+        report = candidate.integrity
+        if report is None and candidate.path.is_file():
+            run = integrity_check or default_keeper_check()
+            try:
+                report = run(candidate.path)
+            except Exception as exc:  # any failure to measure is no evidence
+                report = IntegrityReport(
+                    path=candidate.path, evidence=False,
+                    problems=(f"the check could not run: {exc}",),
+                )
+        return corrupt_checks(
+            candidate.path, catalogue, report, measured=candidate.measured,
+        )
+    # media-free-folder with no identifier: the subtree, not a row
+    rows = catalogue.at_or_below(candidate.path)
+    tracks = loose_tracks(candidate.path)
+    return [
+        Check("it is on disk", candidate.path.exists(), str(candidate.path)),
+        Check(
+            "nothing catalogued is at or below it", not rows,
+            "; ".join(str(r.get("Path")) for r in rows[:3]),
+        ),
+        Check("the folder holds no media", media_free(candidate.path),
+              str(candidate.path)),
+        Check(
+            "the folder holds no loose audio or subtitle track", not tracks,
+            ", ".join(p.name for p in tracks[:5]) + (" ..." if len(tracks) > 5 else ""),
+        ),
+    ]
 
 
 def _top_level(path: Path, roots: Sequence[str] | None) -> tuple[str, ...]:
@@ -582,6 +692,9 @@ def safe_delete(
     backup_folders: Path | str | None = None,
     remove_rows: bool = True,
     keeper_check: KeeperCheck | None = None,
+    catalogue: Catalogue | None = None,
+    rules: Rules = DEFAULT_RULES,
+    integrity_check: KeeperCheck | None = None,
 ) -> DeletionReport:
     """Check everything, then -- if the client is not in a dry run -- park it.
 
@@ -602,6 +715,10 @@ def safe_delete(
     ``keeper_check`` reads the payload of every kept copy (default: the full
     :func:`mkvkit.integrity.check`). Each kept file is read once per run, however
     many candidates name it.
+
+    The leftover categories are checked against ``catalogue``, read once for
+    the run when it is not given; ``rules`` say what is junk, and
+    ``integrity_check`` measures a corrupt-unplayable candidate.
     """
     released = tuple(sorted(set(allowed_categories)))
     audit_path = Path(audit) if audit is not None else None
@@ -631,11 +748,16 @@ def safe_delete(
     # Read once: a folder directly under one of these costs a whole-library
     # refresh when it goes, which is worth saying before it is scheduled.
     served_roots = library_roots(client)
+    if catalogue is None and any(
+        not c.needs_item or c.category == CORRUPT for c in candidates
+    ):
+        catalogue = Catalogue.fetch(client)
     outcomes: list[Outcome] = []
     for candidate in candidates:
         checks, contents = preconditions(
             client, candidate, allowed_categories=released, users=users,
-            keeper_check=once,
+            keeper_check=once, catalogue=catalogue, rules=rules,
+            integrity_check=integrity_check, roots=served_roots or [],
         )
         notes = (tuple(contents.notes) if contents is not None else ()) + _top_level(
             candidate.path, served_roots
@@ -706,20 +828,32 @@ def _park_and_remove(
                 shutil.copy2(extra, backup / extra.name)
         writer.line(f"{candidate.item_id} copied the rest of the folder to {backup}")
 
+    # Read before the video moves: the set is found by the video's own name.
+    carried: SidecarSet | None = (
+        sidecars_of(candidate.path)
+        if candidate.path.is_file()
+        and candidate.path.suffix.lower() in VIDEO_SUFFIXES else None
+    )
+    label = candidate.item_id or "-"
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(candidate.path), str(destination))
-    writer.line(f"{candidate.item_id} parked {candidate.path} at {destination}")
+    writer.line(f"{label} parked {candidate.path} at {destination}")
     if not destination.exists():  # pragma: no cover - the move raises instead
         return Outcome(
             candidate=candidate,
             checks=(*checks, Check("it arrived in the parking directory", False)),
         )
+    side_notes = _park_sidecars(
+        carried, parked, label, writer,
+        tracks_too=candidate.category == CORRUPT,
+    )
+    size += sum(_parked_size(parked, s.path) for s in (carried or ()))
 
     removed = False
     row_notes: list[str] = []
-    if remove_row:
+    if remove_row and candidate.item_id:
         removed, note = _let_the_row_go(client, candidate)
-        writer.line(f"{candidate.item_id} {note}")
+        writer.line(f"{label} {note}")
         if not removed:
             row_notes.append(note)
     return Outcome(
@@ -731,10 +865,82 @@ def _park_and_remove(
         bytes_freed=size,
         notes=(
             *(contents.notes if contents is not None else ()),
+            *side_notes,
             *row_notes,
             "parked, not deleted; removing it for good is a separate decision",
         ),
     )
+
+
+def parked_location(parked: Path, path: Path) -> Path:
+    """Where a path lands in the parking directory: its layout, anchor dropped."""
+    relative = Path(*path.parts[1:]) if path.is_absolute() else path
+    return parked / relative
+
+
+def _parked_size(parked: Path, original: Path) -> int:
+    here = parked_location(parked, original)
+    try:
+        if here.is_dir():
+            return sum(entry.size or 0 for entry in walk(here))
+        return here.stat().st_size if here.exists() else 0
+    except OSError:
+        return 0
+
+
+def _park_sidecars(
+    carried: SidecarSet | None, parked: Path, label: str, writer: _Audit,
+    *, tracks_too: bool,
+) -> list[str]:
+    """Park every file that belongs to a parked video, and say what is left.
+
+    Description files, pictures, preview tiles and the rest mean nothing
+    without their video and go with it. A subtitle or an external audio
+    track may be the only copy of a translation the kept copy lacks, so it
+    goes only when no copy is kept (``tracks_too``, corrupt-unplayable);
+    otherwise it stays and is said. A sidecar already gone is skipped; one
+    whose place in the parking directory is taken is left where it is and
+    said, never overwritten.
+    """
+    if carried is None:
+        return []
+    notes: list[str] = []
+    for sidecar in carried:
+        source = sidecar.path
+        if not source.exists():
+            continue
+        if sidecar.kind in (SidecarKind.SUBTITLE, SidecarKind.AUDIO) and not tracks_too:
+            notes.append(
+                f"{sidecar.kind.value} track left in place, it may be the only copy: "
+                f"{source}"
+            )
+            writer.line(f"{label} sidecar KEPT ({sidecar.kind.value}) {source}")
+            continue
+        target = parked_location(parked, source)
+        if target.exists():
+            notes.append(f"sidecar left in place, its parking place is taken: {source}")
+            writer.line(f"{label} sidecar LEFT {source}: {target} exists")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+        writer.line(f"{label} parked sidecar ({sidecar.kind.value}) {source} at {target}")
+    folder = carried.video.parent
+    try:
+        with os.scandir(folder) as listing:
+            left = [
+                entry.name for entry in listing
+                if entry.is_file(follow_symlinks=False)
+                and os.path.splitext(entry.name)[1].lower() in VIDEO_SUFFIXES
+            ]
+    except OSError:
+        left = ["?"]
+    if not left:
+        notes.append(
+            f"{folder} holds no video of its own now: 'jfkit leftovers sweep' "
+            "lists it as a dead-release-folder candidate when nothing else is in it"
+        )
+        writer.line(f"{label} note: {folder} holds no video of its own now")
+    return notes
 
 
 def _let_the_row_go(client: Client, candidate: Candidate) -> tuple[bool, str]:
