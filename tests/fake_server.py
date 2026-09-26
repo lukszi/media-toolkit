@@ -504,6 +504,11 @@ class _Handler(BaseHTTPRequestHandler):
         if "includeitemtypes" in lowered:
             kinds = lowered["includeitemtypes"].split(",")
             rows = [row for row in rows if row.get("Type") in kinds]
+        if "mindatelastsaved" in lowered:
+            # the stand-in's dates are all written in one format, so they
+            # compare as text
+            since = lowered["mindatelastsaved"]
+            rows = [row for row in rows if str(row.get("DateLastSaved") or "") >= since]
         if "searchterm" in lowered:
             term = lowered["searchterm"].casefold()
             rows = [row for row in rows if term in str(row.get("Name", "")).casefold()]

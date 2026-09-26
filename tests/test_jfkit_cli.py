@@ -153,6 +153,8 @@ def test_asking_which_device_backs_a_path_reads_nothing_else(
     # run, working on media in parallel, included -- would hold the gate. The
     # real listing is checked on its own in test_jobs.py.
     monkeypatch.setattr("jfkit.jobs.list_processes", lambda: [])
+    # nor are the disk's own counters: the suite reads its temporary tree
+    monkeypatch.setattr("jfkit.jobs.sample_activity", lambda *_a, **_k: None)
     assert run(configured, "jobs", "gate", str(tmp_path), "--ignore-server") == 0
     assert "clear" in capsys.readouterr().out
 
@@ -166,6 +168,7 @@ def test_the_gate_verb_is_held_by_a_reader_on_that_device(
 
     reader = Process(pid=7, name="ffmpeg", command=f"ffmpeg -i {tmp_path / 'a.mkv'}")
     monkeypatch.setattr("jfkit.jobs.list_processes", lambda: [reader])
+    monkeypatch.setattr("jfkit.jobs.sample_activity", lambda *_a, **_k: None)
     assert run(configured, "jobs", "gate", str(tmp_path), "--ignore-server") == 1
     out = capsys.readouterr().out
     assert f"{device_of(tmp_path)}: held" in out

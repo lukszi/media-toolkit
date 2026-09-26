@@ -49,7 +49,7 @@ from .client import Client
 from .config import Config
 from .devices import device_of
 from .dto import compare, fetch, load, save, update_item
-from .jobs import gate as device_gate
+from .jobs import RECENT_WINDOW_S, Gate, GateTimeout, observe, server_view, wait_until_clear
 from .report import FORMATS
 from .report import write as write_survey
 from .safedelete import default_keeper_check, load_manifest, safe_delete
@@ -655,7 +655,19 @@ def _register_jobs(subparsers: argparse._SubParsersAction) -> None:  # type: ign
                        help="a marker this job's own workers carry, so it is not "
                             "counted as somebody else's reader")
     check.add_argument("--ignore-server", action="store_true",
-                       help="do not ask the server what it is running")
+                       help="do not ask the server what it is running or playing")
+    check.add_argument("--sample", type=float, default=1.0, metavar="S",
+                       help="watch the device's own counters for this long; 0 skips it "
+                            "(default: %(default)s)")
+    check.add_argument("--recent-window", type=float, default=RECENT_WINDOW_S / 60,
+                       metavar="MIN",
+                       help="items the server changed within this many minutes count as "
+                            "work it may still be doing; 0 skips it (default: %(default)s)")
+    check.add_argument("--lock", action="append", default=[], type=Path, metavar="PATH",
+                       help="a lock file whose existence holds the gate; repeatable")
+    check.add_argument("--wait", type=float, default=0.0, metavar="MIN",
+                       help="look again every minute until clear, for at most this long")
+    check.add_argument("--json", action="store_true", help="print the gate as JSON")
     check.set_defaults(handler=_jobs_gate)
 
     lanes = verbs.add_parser("lanes", help="group work by device, largest first")
@@ -665,14 +677,37 @@ def _register_jobs(subparsers: argparse._SubParsersAction) -> None:  # type: ign
 
 
 def _jobs_gate(args: argparse.Namespace, config: Config) -> int:
-    running: list[str] = []
-    if not args.ignore_server and server_configured(config):
-        running = [task.name for task in
-                   segments_module.running(client_from(args, config))]
-    found = device_gate(device_of(args.path), running_tasks=running, own_tag=args.tag)
-    print(found)
-    if found.rotational is True:
-        print("  this device spins: one sequential reader at a time")
+    """Exit 0 when clear, 1 when RED; the output names every signal that held it."""
+    device = device_of(args.path)
+    window_s = max(0.0, args.recent_window * 60)
+    client = (
+        client_from(args, config)
+        if not args.ignore_server and server_configured(config) else None
+    )
+
+    def look() -> Gate:
+        view = (
+            server_view(client, recent_window_s=window_s) if client is not None else None
+        )
+        return observe(
+            device, view=view, own_tag=args.tag, sample_s=args.sample,
+            locks=args.lock, recent_window_s=window_s,
+            max_readers=config.jobs.max_readers_per_device,
+        )
+
+    try:
+        found = wait_until_clear(
+            look, poll_s=60.0, timeout_s=max(0.0, args.wait * 60),
+            on_hold=lambda held: log.info("%s", held),
+        )
+    except GateTimeout as exc:
+        found = exc.gate
+    if args.json:
+        print(json.dumps(found.as_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(found)
+        if found.rotational is True:
+            print("  this device spins: one sequential reader at a time")
     return 0 if found.open else 1
 
 
