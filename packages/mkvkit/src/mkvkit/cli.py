@@ -47,6 +47,7 @@ REGISTRY: dict[str, SubCommand] = {}
 def _register_own() -> None:
     """Register the sub-commands this package provides, if they can load."""
     from .commands import REGISTRARS
+    from .health import register as health
     from .langid.cli import register as langid
     from .steps import register as steps
 
@@ -54,6 +55,7 @@ def _register_own() -> None:
         REGISTRY.setdefault(name, register)
     REGISTRY.setdefault("langid", langid)
     REGISTRY.setdefault("steps", steps)
+    REGISTRY.setdefault("health", health)
 
 
 def add_common_arguments(parser: argparse.ArgumentParser) -> None:
