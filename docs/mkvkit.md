@@ -156,7 +156,10 @@ reads more than a few megabytes:
    size averages below.
 
 A file that passes all four is **OK**, one that fails any is **SUSPECT** with
-the evidence, and one that cannot be opened is **UNREADABLE**.
+the evidence, and one that cannot be opened is **UNREADABLE**. A file with a
+suffix both video and source code use -- `.ts` above all -- that has no
+transport-stream sync pattern and reads as text is reported as "not a media
+file" and not judged.
 
 **Stage 2, the suspects only, read whole.** `integrity.check()` -- every packet
 listed, every frame decoded -- makes a suspect **CORRUPT**, or clears it to

@@ -80,8 +80,10 @@ from .sidecars import VIDEO_SUFFIXES
 from .walk import Skipped, walk
 
 __all__ = [
+    "AMBIGUOUS_SUFFIXES",
     "CORRUPT",
     "OK",
+    "RULES",
     "SCAN_SUFFIXES",
     "SUSPECT",
     "UNREADABLE",
@@ -97,6 +99,7 @@ __all__ = [
     "declared_end",
     "iter_suspects",
     "manifest_rows",
+    "not_a_stream",
     "plan",
     "register",
     "render_table",
@@ -127,6 +130,15 @@ MIB = 1 << 20
 #: The state file's schema. A record of another schema is ignored, which
 #: costs a re-scan and never a wrong answer.
 SCHEMA = 1
+
+#: The version of the stage-1 rules. A rule change that can only clear a file
+#: (never newly suspect one) bumps this, and a re-run reads again only the
+#: suspects an older version answered for -- not the whole library.
+RULES = 2
+
+#: Suffixes the server counts as video that are also used for other things --
+#: above all ``.ts``, which is a transport stream and a TypeScript source.
+AMBIGUOUS_SUFFIXES = frozenset({".ts", ".tp", ".m2t", ".mts", ".m2ts"})
 
 
 # ------------------------------------------------------------------ settings
@@ -190,6 +202,9 @@ class FileResult:
     scanned_at: str = ""
     seconds: float = 0.0
     bytes_read: int = 0
+    #: False when the file only carries a video suffix: it is reported, not judged
+    media: bool = True
+    rules: int = RULES
     #: filled in from the server when asked; never stored in the state file
     item_id: str | None = None
     title: str | None = None
@@ -217,6 +232,7 @@ class FileResult:
         values = {k: v for k, v in record.items() if k in known}
         values["evidence"] = tuple(values.get("evidence") or ())
         values["notes"] = tuple(values.get("notes") or ())
+        values.setdefault("rules", 1)
         return cls(**values)
 
 
@@ -541,6 +557,36 @@ def _chunked_end(handle: Any, size: int, *, big_endian: bool, max_items: int) ->
 
 
 # -------------------------------------------------------------------- stage 1
+_SYNC = 0x47
+
+
+def not_a_stream(path: Path | str, *, probe: int = 4096) -> str | None:
+    """What a file with a transport-stream suffix is instead, or None if it is one.
+
+    A transport stream carries a sync byte every 188 bytes (every 192 in the
+    variant with a timestamp in front). A file whose start has neither pattern
+    and reads as text is source code, a subtitle or a note that happens to
+    share the suffix. A file that starts with zeros is not text: it stays a
+    media file, and the sweep judges it.
+    """
+    with Path(path).open("rb") as handle:
+        head = handle.read(probe)
+    if not head:
+        return None
+    for stride, first in ((188, 0), (192, 4)):
+        offsets = range(first, min(len(head), first + stride * 5), stride)
+        if offsets and all(head[i] == _SYNC for i in offsets if i < len(head)):
+            return None
+    if b"\x00" in head:
+        return None
+    try:
+        head.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if exc.start < len(head) - 4:  # a character cut by the probe's end is fine
+            return None
+    return "text, with no transport-stream sync pattern"
+
+
 def _number(value: Any) -> float | None:
     try:
         number = float(value)
@@ -697,6 +743,13 @@ def sweep_one(
     if size == 0:
         return replace(base, verdict=SUSPECT, evidence=("the file is empty",),
                        seconds=time.monotonic() - started)
+    if path.suffix.lower() in AMBIGUOUS_SUFFIXES:
+        what = not_a_stream(path)
+        if what is not None:
+            return replace(
+                base, verdict=OK, media=False, seconds=time.monotonic() - started,
+                bytes_read=read, notes=(f"not a media file: {what}; not judged",),
+            )
     if zero.fraction > settings.max_zero_fraction:
         evidence.append(
             f"{zero.zero_blocks} of {zero.blocks} sampled blocks are nothing but zero "
@@ -762,6 +815,9 @@ class ScanReport:
     def counts(self) -> dict[str, int]:
         return {v: len(self.by_verdict(v)) for v in VERDICTS}
 
+    def not_media(self) -> list[FileResult]:
+        return [r for r in self.results if not r.media]
+
 
 def plan(
     roots: Sequence[Path | str],
@@ -814,6 +870,8 @@ def plan(
                 and previous.size == stat.st_size and previous.mtime_ns == stat.st_mtime_ns
                 and previous.settings == fingerprint
                 and not (retry_unreadable and previous.verdict == UNREADABLE)
+                and not (previous.verdict == SUSPECT and previous.stage == 1
+                         and previous.rules < RULES)
             ):
                 known.append(replace(previous, device=device))
                 continue
@@ -1025,6 +1083,7 @@ def write_json(path: Path | str, report: ScanReport, *, meta: Mapping[str, Any])
     document = {
         **meta,
         "counts": report.counts(),
+        "not_media": len(report.not_media()),
         "devices": report.devices,
         "confirmed": report.confirmed,
         "not_scanned": report.not_scanned,
@@ -1301,7 +1360,9 @@ def _health(args: argparse.Namespace, config: Config) -> int:
         print(f"  not reached: {missed_line}")
     counted = report.counts()
     print(" ".join(f"{v} {counted[v]}" for v in VERDICTS)
-          + f" -- {len(report.results)} file(s), {len(report.not_scanned)} not reached")
+          + f" -- {len(report.results)} file(s), {len(report.not_scanned)} not reached"
+          + (f", {len(report.not_media())} not media (counted OK)"
+             if report.not_media() else ""))
     for device in report.devices:
         print(
             f"  {device['device']}: {device['scanned']} read in {device['elapsed_s']} s "

@@ -605,3 +605,39 @@ def test_from_state_reads_nothing_new_and_confirms_what_the_sweep_found(
     document = json.loads(report.read_text(encoding="utf-8"))
     assert document["counts"] == {OK: 1, SUSPECT: 1, CORRUPT: 1, UNREADABLE: 0}
     assert fresh.name not in {Path(r["path"]).name for r in document["results"]}
+
+
+# ------------------------------------------------- a video suffix on a text
+def test_a_text_file_with_a_stream_suffix_is_reported_not_judged(tmp_path: Path) -> None:
+    source = tmp_path / "Hollowmere" / "routes.ts"
+    source.parent.mkdir()
+    source.write_text("export const routes = [];\n" * 40, encoding="utf-8")
+    found = sweep_one(target_of(source), SMALL, runner=default_runner())
+    assert found.verdict == OK and not found.media
+    assert "not a media file" in found.notes[0]
+
+
+def test_a_stream_or_a_zeroed_file_with_that_suffix_is_still_judged(tmp_path: Path) -> None:
+    from mkvkit.health import not_a_stream
+
+    stream = tmp_path / "Northwind - S01E03.ts"
+    stream.write_bytes(b"".join(b"\x47" + os.urandom(187) for _ in range(40)))
+    assert not_a_stream(stream) is None
+    zeroed = tmp_path / "Northwind - S01E04.ts"
+    zeroed.write_bytes(bytes(8192))
+    assert not_a_stream(zeroed) is None
+
+
+def test_suspects_of_older_rules_are_read_again_and_nothing_else(tmp_path: Path) -> None:
+    files, device_of = two_disks(tmp_path, per_disk=2)
+    fingerprint = SMALL.fingerprint()
+    state = {
+        StateFile.key(p): FileResult(
+            str(p), p.stat().st_size, p.stat().st_mtime_ns, device_of(p),
+            SUSPECT if n == 0 else OK, settings=fingerprint, rules=1,
+        )
+        for n, p in enumerate(files)
+    }
+    again, known, *_ = plan([tmp_path], state=state, settings=SMALL, device_of=device_of)
+    assert [t.path for t in again] == [files[0]]
+    assert len(known) == 3
