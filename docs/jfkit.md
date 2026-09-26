@@ -126,7 +126,14 @@ before it.
 jfkit naming /srv/media/series/Northwind --only-problems
 ```
 
-Exits non-zero when any name would be read as a range. It is pinned by a
+Exits 1 when any name would be read as a range -- a double episode named
+that way on purpose included, so read the `RANGE` lines -- and 0 otherwise; a
+name no expression claims does not change that. Each name is also measured
+with the longest file the server will write beside it (the preview tiles are
+the deepest) and marked `LONG` above 259 characters, the classic Windows
+limit. `naming`, `notify` and `refresh` take `-` (one entry per line on
+standard input) and `@FILE` for lists too long for a command line, and
+`--full-paths` prints each path as given. It is pinned by a
 table of sixty-five invented names and records the release it was read
 against, because a regex port of somebody else's parser with no fixtures will
 eventually be confidently wrong.

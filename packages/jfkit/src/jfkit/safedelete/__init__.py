@@ -224,6 +224,8 @@ class DeletionReport:
         ]
         lines += ["  " + line for outcome in self.refused
                   for line in str(outcome).splitlines()]
+        lines += [f"  {outcome.candidate.path.name}: note: {note}"
+                  for outcome in self.allowed for note in outcome.notes]
         if self.audit is not None:
             lines.append(f"every step is in {self.audit}")
         return "\n".join(lines)
@@ -357,6 +359,27 @@ def preconditions(
         # deciding for them.
         contents = folder_contents(candidate.path)
     return checks, contents
+
+
+def _top_level(path: Path, roots: Sequence[str] | None) -> tuple[str, ...]:
+    """A note when a folder candidate sits directly under a library folder.
+
+    The server answers a vanished folder by refreshing its parent item, and
+    the parent of a top-level folder is the whole library: every file in it
+    is looked at again. That is not a reason to refuse, but it is a reason to
+    choose when -- on a quiet disk, not in the middle of other work.
+    """
+    if not roots or not path.is_dir():
+        return ()
+    parent = _normalised(path.parent)
+    for root in roots:
+        if _normalised(Path(root)) == parent:
+            return (
+                f"this folder sits directly under the library folder {root}: when "
+                "it goes, the server refreshes that whole library -- schedule it "
+                "for a quiet disk",
+            )
+    return ()
 
 
 def _same_path(catalogued: str, manifest: Path) -> bool:
@@ -562,16 +585,23 @@ def safe_delete(
                 writer.line(f"kept copy: {line}")
         return measured[key]
 
+    # Read once: a folder directly under one of these costs a whole-library
+    # refresh when it goes, which is worth saying before it is scheduled.
+    served_roots = library_roots(client)
     outcomes: list[Outcome] = []
     for candidate in candidates:
         checks, contents = preconditions(
             client, candidate, allowed_categories=released, users=users,
             keeper_check=once,
         )
-        notes = tuple(contents.notes) if contents is not None else ()
+        notes = (tuple(contents.notes) if contents is not None else ()) + _top_level(
+            candidate.path, served_roots
+        )
         outcome = Outcome(candidate=candidate, checks=tuple(checks), notes=notes)
         for check in checks:
             writer.line(f"{candidate.item_id} {check}")
+        for note in notes:
+            writer.line(f"{candidate.item_id} note: {note}")
 
         if not outcome.allowed or client.dry_run:
             if not outcome.allowed:

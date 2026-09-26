@@ -840,3 +840,25 @@ def test_a_candidate_refused_already_is_not_decoded_for_nothing(
     assert seen == [] and report.refused
     assert any(c.name == safedelete_module.KEPT_COPY_PLAYS
                for c in report.refused[0].refusals)
+
+
+def test_a_folder_directly_under_a_library_folder_says_what_its_removal_costs(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """Not a refusal: a note, so the run can be put on a quiet disk."""
+    url, recorder = server
+    leftovers = tree / "Harbour Lights (release pack)"
+    leftovers.mkdir()
+    (leftovers / "poster.jpg").write_bytes(b"x" * 10)
+    recorder.items[0]["Path"] = str(leftovers)
+    recorder.virtual_folders = [{"Name": "Shows", "Locations": [str(tree)]}]
+    report = safe_delete(
+        client_for(url),
+        [Candidate(item_id=FIRST, path=leftovers, category="media-free-folder")],
+        allowed_categories=["media-free-folder"], parked=tmp_path / "parked",
+        audit=tmp_path / "audit.log",
+    )
+    assert report.allowed
+    assert any("refreshes that whole library" in n for n in report.allowed[0].notes)
+    assert "refreshes that whole library" in str(report)
+    assert "note:" in (tmp_path / "audit.log").read_text(encoding="utf-8")

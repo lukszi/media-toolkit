@@ -35,8 +35,9 @@ import argparse
 import json
 import logging
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from . import libopts as libopts_module
 from . import maintenance as maintenance_module
@@ -54,7 +55,13 @@ from .report import write as write_survey
 from .safedelete import default_keeper_check, load_manifest, safe_delete
 from .service import ServiceControlError, ServiceController, controller_for
 
-__all__ = ["REGISTRARS", "add_service_arguments", "add_write_arguments", "client_from"]
+__all__ = [
+    "REGISTRARS",
+    "add_service_arguments",
+    "add_write_arguments",
+    "client_from",
+    "expand_lists",
+]
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +74,34 @@ def add_write_arguments(parser: argparse.ArgumentParser) -> None:
         help="say what would happen and change nothing (the default)",
     )
     group.add_argument("--apply", dest="apply", action="store_true", help="actually write")
+
+
+#: Said in the help of every verb that takes many paths or identifiers.
+LIST_HELP = (
+    "; '-' reads more, one per line, from standard input, and @FILE from a "
+    "file -- a long list does not fit on one command line"
+)
+
+
+def expand_lists(values: Sequence[str], *, stdin: TextIO | None = None) -> list[str]:
+    """Arguments as given, with ``-`` and ``@FILE`` replaced by their lines.
+
+    One entry per line, blank lines skipped, nothing else interpreted: a
+    path with spaces is one line. The order is kept, so a caller can match
+    each answer to its question by position as well as by the path printed
+    beside it.
+    """
+    out: list[str] = []
+    for value in values:
+        if value == "-":
+            source = stdin if stdin is not None else sys.stdin
+            out += [line.rstrip("\r\n") for line in source if line.strip()]
+        elif value.startswith("@") and len(value) > 1:
+            text = Path(value[1:]).read_text(encoding="utf-8-sig")
+            out += [line.rstrip("\r") for line in text.splitlines() if line.strip()]
+        else:
+            out.append(value)
+    return out
 
 
 def _refuse_without(args: argparse.Namespace, attribute: str, flag: str) -> bool:
@@ -196,7 +231,8 @@ def _register_refresh(subparsers: argparse._SubParsersAction) -> None:  # type: 
     parser = subparsers.add_parser(
         "refresh", help="refresh without replacing, wait for it, and diff the result"
     )
-    parser.add_argument("item_ids", nargs="+", metavar="ID")
+    parser.add_argument("item_ids", nargs="+", metavar="ID",
+                        help="the items to refresh" + LIST_HELP)
     parser.add_argument("--expect", action="append", default=[], metavar="FIELD",
                         help="a field this refresh is supposed to change; one that "
                              "did not change is reported and exits non-zero")
@@ -209,7 +245,7 @@ def _register_refresh(subparsers: argparse._SubParsersAction) -> None:  # type: 
 def _refresh(args: argparse.Namespace, config: Config) -> int:
     client = client_from(args, config)
     drifted = 0
-    for item_id in args.item_ids:
+    for item_id in expand_lists(args.item_ids):
         report = refresh_module.safe_refresh(
             client, item_id, expected_changes=args.expect,
             require_changes=args.expect,
@@ -224,7 +260,8 @@ def _register_notify(subparsers: argparse._SubParsersAction) -> None:  # type: i
     parser = subparsers.add_parser(
         "notify", help="tell the server these paths changed, and nothing wider"
     )
-    parser.add_argument("paths", nargs="+", type=Path, metavar="PATH")
+    parser.add_argument("paths", nargs="+", metavar="PATH",
+                        help="the files or folders that changed" + LIST_HELP)
     parser.add_argument("--root", action="append", default=[], metavar="PATH",
                         help="a library root, which is refused rather than notified")
     parser.add_argument("--kind", default="Modified",
@@ -249,7 +286,8 @@ def _notify(args: argparse.Namespace, config: Config) -> int:
     ]
     try:
         sent = refresh_module.notify_changed(
-            client, args.paths, roots=roots, kind=args.kind
+            client, [Path(p) for p in expand_lists(args.paths)], roots=roots,
+            kind=args.kind,
         )
     except refresh_module.NotifyRefused as refused:
         print(str(refused))

@@ -12,6 +12,7 @@ pipelines where nobody is reading the output.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -158,6 +159,57 @@ def test_lanes_are_printed_largest_first(
     assert run(configured, "jobs", "lanes", str(small), str(large)) == 0
     out = capsys.readouterr().out
     assert out.index("large.mkv") < out.index("small.mkv")
+
+
+def test_naming_says_what_its_exit_status_means(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        jfkit_cli.main(["naming", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "exit status: 0 when no name would be read as an episode range" in text
+
+
+def test_naming_reads_a_list_and_prints_what_it_was_given(
+    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hundreds of names do not fit on one command line; a list does."""
+    names = [f"/srv/media/series/Harbour Lights/Season 01/Harbour Lights - S01E{n:02d}.mkv"
+             for n in range(1, 41)]
+    listing = tmp_path / "names.txt"
+    listing.write_text("\n".join(names[:20]) + "\n", encoding="utf-8")
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(names[20:]) + "\n"))
+    assert run(configured, "naming", f"@{listing}", "-", "--full-paths") == 0
+    printed = capsys.readouterr().out
+    assert all(name in printed for name in names)
+    assert "40 path(s)" in printed
+
+
+def test_naming_warns_when_the_servers_own_files_would_not_fit(
+    configured: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The name parses; the preview tiles the server writes beside it do not fit."""
+    folder = "\\".join(["srv", "media", "series", "Harbour Lights " + "x" * 185, "Season 01"])
+    fits = folder + "\\Harbour Lights - S01E01.mkv"
+    assert len(fits) < 259
+    assert run(configured, "naming", fits, "--only-problems") == 0
+    printed = capsys.readouterr().out
+    assert "LONG" in printed and "1 too long with their sidecars" in printed
+
+
+def test_notify_reads_its_paths_from_standard_input(
+    configured: Path, server: tuple[str, Recorder], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _url, recorder = server
+    season = "/srv/media/series/Harbour Lights/Season 01"
+    monkeypatch.setattr("sys.stdin", io.StringIO(
+        f"{season}/Harbour Lights - S01E01.mkv\n\n{season}/Harbour Lights - S01E02.mkv\n"
+    ))
+    assert run(configured, "notify", "-", "--apply") == 0
+    assert [u["Path"].replace("\\", "/") for u in recorder.notifications] == [
+        f"{season}/Harbour Lights - S01E01.mkv", f"{season}/Harbour Lights - S01E02.mkv",
+    ]
 
 
 # ------------------------------------------------------------------ writing

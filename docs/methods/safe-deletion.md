@@ -110,6 +110,12 @@ it absolutely stops the *folder* being removed, and that distinction is put in
 front of a person rather than decided for them. A release folder that turns
 out to hold a second film is the clearest possible reason to stop.
 
+A folder that sits **directly under a library folder** gets a note rather
+than a refusal: when it goes, the server refreshes its parent, and the parent
+of a top-level folder is the whole library -- every file in it is looked at
+again. The run is still allowed; the note is there so it can be put on a
+quiet disk.
+
 ## 6. Nothing is deleted. Things are moved.
 
 The file goes to a parking directory that keeps its layout. It stays there

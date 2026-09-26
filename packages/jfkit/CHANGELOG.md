@@ -133,6 +133,19 @@ day the work was done.
   `Etag`) does; one that did not move is reported with the value it kept and
   the command exits 1. `safe_refresh(require_changes=...)` is the library
   side.
+- **`naming` says what its exit status means, and what will not fit.** The
+  help states it: 1 when any name would be read as a range (a double
+  episode named that way on purpose included), 0 otherwise. Each name is
+  measured with the longest file the server writes beside it and marked
+  `LONG` above the classic Windows limit of 259 characters.
+- **Long lists no longer have to fit on one command line.** `naming`,
+  `notify` and `refresh` take `-` (one entry per line on standard input) and
+  `@FILE`; `naming --full-paths` prints each path as given, so batched
+  output can be matched to its input.
+- **`delete` notes what removing a top-level folder costs.** A folder
+  candidate directly under a library folder is reported, in the output and
+  the audit, as one whose removal makes the server refresh that whole
+  library -- not refused, but worth scheduling for a quiet disk.
 - **`item show --save` keeps stdout for the record.** The "written to" line
   went to stdout ahead of the JSON, so a pipe into a JSON reader failed on
   its first line. It goes to stderr now.
