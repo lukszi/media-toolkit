@@ -82,6 +82,13 @@ PARK_SIDECAR = "dedupe.park-sidecar"
 PARK_FOLDER = "dedupe.park-folder"
 NOTIFY = "dedupe.notify"
 
+#: Why a group of one row's media sources is not planned.
+VERSIONS = (
+    "these copies are versions of one catalogue row, not rows of their own: the "
+    "row's watched state and the file it plays are the server's to reconcile, so "
+    "parking one version is left for a person"
+)
+
 #: The verb a plan is saved under.
 VERB = "jfkit dedupe"
 
@@ -222,7 +229,11 @@ def build_plan(
 ) -> Planned:
     """The steps that resolve every SAFE verdict; the others contribute nothing."""
     safe = [v for v in verdicts if v.verdict == SAFE and v.keeper is not None]
+    versions = {v.group.key: VERSIONS for v in safe
+                if any(m.parent_id for m in v.group.members)}
+    safe = [v for v in safe if v.group.key not in versions]
     steps, notes, unplanned = _carry_steps(client, safe, workers)
+    unplanned = {**versions, **unplanned}
     safe = [v for v in safe if v.group.key not in unplanned]
     parks: list[Step] = []
     sidecars: list[Step] = []

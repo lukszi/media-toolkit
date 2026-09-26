@@ -55,7 +55,11 @@ applies the same rule, and counts identifiers shared by segments separately.
 same file is `NOT_DUPLICATE`.
 
 **An item with two media sources is two copies** (`members_of`): the server
-merges two files in one folder into one row, and each is a member.
+merges two files in one folder into one row, and each is a member. They are
+read and ranked like any other copies, so the verdict says which one the
+rules would keep, but the plan does not park a version (`build_plan`): the
+row's watched state and the file it plays are the server's to reconcile, and
+the group is `BLOCKED` with that reason.
 
 ## 2. What each copy holds
 
@@ -208,7 +212,7 @@ skipped, and every step can tell whether its effect is already in place.
 |---|---|
 | `SAFE` | one copy may replace every other, and its payload was read and is there |
 | `KEEP_BOTH` | no copy may replace all the others under the owner's rules, or they are different cuts; the reasons say what each lacks |
-| `BLOCKED` | a copy could not be read, the keeper's payload failed or could not be checked, or its watched state could not be read; nothing in the group is touched |
+| `BLOCKED` | a copy could not be read, the keeper's payload failed or could not be checked, a copy's watched state could not be read, or the copies are versions of one row; nothing in the group is touched |
 | `NOT_DUPLICATE` | the rows are not copies: distinct segments, one file catalogued twice, rows that disagree on an identifier, or episodes linked only by their slot |
 
 The command exits 1 when any group is `BLOCKED` or an applied step failed.
@@ -225,6 +229,8 @@ The command exits 1 when any group is `BLOCKED` or an applied step failed.
   the tool for proving identity by hash.
 - **No merge.** A copy that lacks one track the other has is not rebuilt
   with it; that is a remux, and a separate job.
+- **No parking of one version of a row.** Copies the server merged into one
+  row are ranked, never planned.
 - **No series-level grouping.** A show split across two series entries is not
   found; merge the series first.
 - **The name decides source or re-encode.** Nothing reads the stream for an

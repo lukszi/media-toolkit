@@ -940,3 +940,20 @@ def test_the_configured_programs_read_every_copy(
     (verdict,) = resolve(find_groups(rows).groups, RULES, config=config)
     assert verdict.verdict == SAFE
     assert seen == [config, config, config]
+
+
+def test_versions_of_one_row_are_chosen_between_and_not_planned(
+    server: tuple[str, Recorder], library: dict[str, Path]
+) -> None:
+    """Two files the server merged into one row: the verdict says which, nothing moves."""
+    url, recorder = server
+    keeper, loser = library["keeper"], library["loser"]
+    recorder.items = [movie_row(1, "The Quiet Harbour", str(keeper), MediaSources=[
+        {"Id": ident(1), "Path": str(keeper)}, {"Id": ident(2), "Path": str(loser)}])]
+    groups = find_groups(recorder.items).groups
+    verdicts = resolve(groups, RULES, prober=_probe_from(_copies_for(library)),
+                       checker=_plays)
+    assert [v.verdict for v in verdicts] == [SAFE]
+    planned = build_plan(client_for(url), verdicts, parked=library["parked"])
+    assert planned.plan.steps == ()
+    assert "versions of one catalogue row" in planned.unplanned[groups[0].key]
