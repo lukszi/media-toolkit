@@ -53,6 +53,7 @@ __all__ = [
     "CommandRunner",
     "Config",
     "ConfigError",
+    "DedupePolicy",
     "JobsConfig",
     "LangidConfig",
     "PathsConfig",
@@ -181,11 +182,51 @@ class PathsConfig:
     work: Path = Path("work")
 
 
+#: What a duplicate resolver may rank copies by, in the order it may be told to.
+DEDUPE_PREFERENCES = ("lossless", "channels", "source", "resolution", "bitrate")
+
+#: How a kept copy's payload is read: ``full`` decodes it, ``quick`` lists
+#: every packet without decoding.
+KEEPER_CHECKS = ("full", "quick")
+
+
+@dataclass(frozen=True)
+class DedupePolicy:
+    """The owner's rules for resolving copies of one film or episode.
+
+    Every value is a default somebody may disagree with, which is why each
+    one is here and not in the resolver. ``docs/methods/duplicate-resolution.md``
+    explains each rule.
+    """
+
+    #: how much shorter than a copy it replaces the kept copy may be
+    runtime_tolerance_s: float = 120.0
+    #: copies further apart than this are different cuts, and both are kept
+    max_runtime_gap_s: float = 600.0
+    #: how eligible keepers are ranked, first criterion first
+    prefer: tuple[str, ...] = DEDUPE_PREFERENCES
+    #: ``codec`` or ``codec/profile`` globs, lower case, that are lossless audio
+    lossless_codecs: tuple[str, ...] = (
+        "truehd*", "mlp*", "flac*", "alac*", "pcm_*", "dts/dts-hd ma*",
+    )
+    #: a track whose title contains one of these is a commentary track
+    commentary_markers: tuple[str, ...] = ("commentary",)
+    #: words in a file or folder name that mark a re-encode, and a source
+    reencode_markers: tuple[str, ...] = (
+        "x264", "x265", "xvid", "divx", "bdrip", "brrip", "dvdrip", "webrip", "hdrip",
+    )
+    source_markers: tuple[str, ...] = ("remux", "web-dl", "webdl", "untouched")
+    #: how the chosen keeper is read while planning, and again before a park
+    keeper_check: str = "full"
+    apply_keeper_check: str = "quick"
+
+
 @dataclass(frozen=True)
 class PolicyConfig:
     keep_languages: tuple[str, ...] = ()
     droppable_languages: tuple[str, ...] = ()
     default_audio: str | None = None
+    dedupe: DedupePolicy = field(default_factory=DedupePolicy)
 
 
 @dataclass(frozen=True)
@@ -463,7 +504,7 @@ def _paths(reader: _Reader) -> PathsConfig:
 
 
 def _policy(reader: _Reader) -> PolicyConfig:
-    keys = ("keep_languages", "droppable_languages", "default_audio")
+    keys = ("keep_languages", "droppable_languages", "default_audio", "dedupe")
     data = reader.section("policy", keys)
     keep = reader.languages("policy", data, "keep_languages")
     drop = reader.languages("policy", data, "droppable_languages")
@@ -475,7 +516,77 @@ def _policy(reader: _Reader) -> PolicyConfig:
     default_audio = reader.string("policy", data, "default_audio")
     if default_audio is not None and not _LANG.match(default_audio):
         reader.problems.append("policy.default_audio is not a language code")
-    return PolicyConfig(keep, drop, default_audio)
+    return PolicyConfig(keep, drop, default_audio, _dedupe(reader, data.get("dedupe")))
+
+
+def _words(
+    reader: _Reader, data: Mapping[str, object], key: str, default: tuple[str, ...]
+) -> tuple[str, ...]:
+    value = data.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, list) or not all(
+        isinstance(v, str) and v.strip() for v in value
+    ):
+        reader.problems.append(f"policy.dedupe.{key} must be a list of non-empty strings")
+        return default
+    return tuple(str(v).strip().lower() for v in value)
+
+
+def _dedupe(reader: _Reader, raw: object) -> DedupePolicy:
+    if raw is None:
+        return DedupePolicy()
+    if not isinstance(raw, dict):
+        reader.problems.append("[policy.dedupe] must be a table")
+        return DedupePolicy()
+    keys = (
+        "runtime_tolerance_s", "max_runtime_gap_s", "prefer", "lossless_codecs",
+        "commentary_markers", "reencode_markers", "source_markers", "keeper_check",
+        "apply_keeper_check",
+    )
+    for key in raw:
+        if key not in keys:
+            reader.problems.append(f"unknown key policy.dedupe.{key}")
+    base = DedupePolicy()
+    numbers: dict[str, float] = {}
+    for key in ("runtime_tolerance_s", "max_runtime_gap_s"):
+        value = reader.number("policy.dedupe", raw, key)
+        if value is not None and value < 0:
+            reader.problems.append(f"policy.dedupe.{key} must not be negative")
+            value = None
+        numbers[key] = float(getattr(base, key)) if value is None else value
+    prefer = _words(reader, raw, "prefer", base.prefer)
+    unknown = [p for p in prefer if p not in DEDUPE_PREFERENCES]
+    if unknown:
+        reader.problems.append(
+            f"policy.dedupe.prefer: {', '.join(unknown)} not one of "
+            f"{', '.join(DEDUPE_PREFERENCES)}"
+        )
+        prefer = base.prefer
+    elif len(set(prefer)) != len(prefer):
+        reader.problems.append("policy.dedupe.prefer names a criterion twice")
+        prefer = base.prefer
+    checks: dict[str, str] = {}
+    for key in ("keeper_check", "apply_keeper_check"):
+        mode = reader.string("policy.dedupe", raw, key)
+        if mode is not None and mode not in KEEPER_CHECKS:
+            reader.problems.append(
+                f"policy.dedupe.{key} must be one of {', '.join(KEEPER_CHECKS)}"
+            )
+            mode = None
+        checks[key] = str(getattr(base, key)) if mode is None else mode
+    return DedupePolicy(
+        runtime_tolerance_s=numbers["runtime_tolerance_s"],
+        max_runtime_gap_s=numbers["max_runtime_gap_s"],
+        prefer=prefer,
+        lossless_codecs=_words(reader, raw, "lossless_codecs", base.lossless_codecs),
+        commentary_markers=_words(
+            reader, raw, "commentary_markers", base.commentary_markers),
+        reencode_markers=_words(reader, raw, "reencode_markers", base.reencode_markers),
+        source_markers=_words(reader, raw, "source_markers", base.source_markers),
+        keeper_check=checks["keeper_check"],
+        apply_keeper_check=checks["apply_keeper_check"],
+    )
 
 
 def _langid(reader: _Reader) -> LangidConfig:

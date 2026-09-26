@@ -61,6 +61,24 @@ keep_languages = ["eng", "deu"]   # never dropped from a rebuild
 droppable_languages = []          # opt-in, and empty by default
 default_audio = "eng"
 
+# How `jfkit dedupe` decides between copies of one film or episode. Every key is
+# optional; the values shown are the defaults. docs/methods/duplicate-resolution.md
+# explains each rule. keep_languages above is also the list of subtitle
+# languages a kept copy must have wherever the other copy has them.
+[policy.dedupe]
+runtime_tolerance_s = 120         # the keeper may be at most this much shorter
+max_runtime_gap_s = 600           # further apart than this: different cuts, keep both
+# how eligible keepers are ranked, first criterion first
+prefer = ["lossless", "channels", "source", "resolution", "bitrate"]
+# codec, or codec/profile, globs that count as lossless audio
+lossless_codecs = ["truehd*", "mlp*", "flac*", "alac*", "pcm_*", "dts/dts-hd ma*"]
+commentary_markers = ["commentary"]   # in a track title
+# words in a file or folder name: a re-encode word wins over a source word
+reencode_markers = ["x264", "x265", "xvid", "divx", "bdrip", "brrip", "dvdrip", "webrip", "hdrip"]
+source_markers = ["remux", "web-dl", "webdl", "untouched"]
+keeper_check = "full"             # while planning: full decodes, quick lists packets
+apply_keeper_check = "quick"      # again, right before each copy is parked
+
 [langid]
 model = "large-v3"
 device = "auto"                   # auto, cpu or cuda
