@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import MappingProxyType
 
@@ -30,7 +31,15 @@ INTERPRETER = Path(sys.executable)
 
 
 @pytest.fixture(autouse=True)
-def _clear() -> None:
+def _clear() -> Iterator[None]:
+    """Forget resolutions on the way in and on the way out.
+
+    On the way out too: the cache is keyed by name and override, not by the
+    search path, so a stand-in found on a test's own PATH would otherwise be
+    what the next test in this process runs as the real program.
+    """
+    clear_cache()
+    yield
     clear_cache()
 
 
