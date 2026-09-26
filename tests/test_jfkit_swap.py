@@ -16,6 +16,7 @@ proves nothing.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -97,10 +98,39 @@ def pair(
 
 
 # ------------------------------------------------------------------ chunking
+@dataclass(frozen=True)
+class SizedPair(Pair):
+    """A pair that reports a size without a file of that size behind it.
+
+    The planner reads nothing but ``Pair.size``; writing a gigabyte to disk to
+    give it one number made this the slowest test in the suite. That the size
+    is the replacement file's is checked on its own, against real files, below.
+    """
+
+    declared: int = 0
+
+    @property
+    def size(self) -> int:
+        return self.declared
+
+
+def sized_pair(tmp_path: Path, item_id: str, name: str, size: int) -> Pair:
+    """Like ``pair``, sizes only: the rebuild is twice the size of the live file."""
+    return SizedPair(
+        item_id=item_id, keeper=tmp_path / "live" / name,
+        replacement=tmp_path / "staging" / name, declared=size * 2,
+    )
+
+
+def test_the_size_of_a_pair_is_the_size_of_its_replacement(tmp_path: Path) -> None:
+    assert pair(tmp_path, FIRST, "one.mkv", size=1000).size == 2000
+    assert Pair(FIRST, tmp_path / "gone", tmp_path / "also-gone").size == 0
+
+
 def test_chunks_are_sized_in_bytes_and_not_in_files(tmp_path: Path) -> None:
     pairs = [
-        pair(tmp_path, FIRST, "one.mkv", size=int(0.6 * 2**30) // 2),
-        pair(tmp_path, SECOND, "two.mkv", size=int(0.6 * 2**30) // 2),
+        sized_pair(tmp_path, FIRST, "one.mkv", size=int(0.6 * 2**30) // 2),
+        sized_pair(tmp_path, SECOND, "two.mkv", size=int(0.6 * 2**30) // 2),
     ]
     assert len(chunks(pairs, chunk_gib=1.0)) == 2
     assert len(chunks(pairs, chunk_gib=4.0)) == 1
@@ -119,8 +149,8 @@ def test_a_single_pair_larger_than_the_chunk_still_gets_a_chunk(
 def test_a_time_budget_makes_the_chunks_smaller(tmp_path: Path) -> None:
     """Estimating the outage before the service goes down is the only useful time."""
     pairs = [
-        pair(tmp_path, FIRST, "one.mkv", size=30 * 2**20),
-        pair(tmp_path, SECOND, "two.mkv", size=30 * 2**20),
+        sized_pair(tmp_path, FIRST, "one.mkv", size=30 * 2**20),
+        sized_pair(tmp_path, SECOND, "two.mkv", size=30 * 2**20),
     ]
     generous = chunks(pairs, chunk_gib=1.0)
     tight = chunks(pairs, chunk_gib=1.0, mib_per_second=60.0, budget_s=1.0)
