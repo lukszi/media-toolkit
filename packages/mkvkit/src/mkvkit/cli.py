@@ -48,10 +48,12 @@ def _register_own() -> None:
     """Register the sub-commands this package provides, if they can load."""
     from .commands import REGISTRARS
     from .langid.cli import register as langid
+    from .steps import register as steps
 
     for name, register in REGISTRARS.items():
         REGISTRY.setdefault(name, register)
     REGISTRY.setdefault("langid", langid)
+    REGISTRY.setdefault("steps", steps)
 
 
 def add_common_arguments(parser: argparse.ArgumentParser) -> None:
