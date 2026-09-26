@@ -65,8 +65,10 @@ __all__ = [
     "UserState",
     "VerifyReport",
     "actions",
+    "carries",
     "expectations",
     "load_mapping",
+    "merge",
     "plan_replay",
     "snapshot",
     "verify",
@@ -507,3 +509,56 @@ def verify(
         problems=tuple(problems),
     )
 
+
+
+# -------------------------------------------------------------- merging copies
+def _latest(states: Sequence[UserState]) -> UserState | None:
+    dated = [s for s in states if s.last_played]
+    if not dated:
+        return None
+    return max(dated, key=lambda s: _instant(s.last_played) or "")
+
+
+def merge(states: Iterable[UserState]) -> UserState:
+    """One user's state for several copies of one film, as one row.
+
+    For resolving duplicates, where every copy's history lands on the one
+    that is kept: played if any copy was, the highest play count (the
+    copies are one film, so the counts are not added), a favourite if any
+    copy was, the latest last-played date, and the resume point of the copy
+    played most recently -- or, where no copy has a date, the furthest one.
+    """
+    rows = list(states)
+    if not rows:
+        return UserState()
+    latest = _latest(rows)
+    if latest is not None:
+        position = latest.position_ticks
+    else:
+        position = max(s.position_ticks for s in rows)
+    return UserState(
+        played=any(s.played for s in rows),
+        play_count=max(s.play_count for s in rows),
+        position_ticks=position,
+        last_played=latest.last_played if latest is not None else None,
+        favorite=any(s.favorite for s in rows),
+    )
+
+
+def carries(target: UserState, source: UserState) -> bool:
+    """Whether ``target`` holds everything ``source`` records.
+
+    A blank source is carried by anything. Otherwise the target is played
+    where the source is, counts at least as often, is a favourite where the
+    source is, and keeps a resume point (or is played) where the source had
+    one. The last-played date is not compared: it cannot be cleared, and it
+    records nothing a person would miss.
+    """
+    if source.blank:
+        return True
+    return (
+        (target.played or not source.played)
+        and target.play_count >= source.play_count
+        and (target.favorite or not source.favorite)
+        and (not source.position_ticks or bool(target.position_ticks) or target.played)
+    )
