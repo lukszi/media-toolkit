@@ -74,6 +74,7 @@ from .evidence import (
 )
 
 __all__ = [
+    "CARRIED_STATE_CATEGORIES",
     "CATEGORIES",
     "KEPT_COPY_CATEGORIES",
     "Candidate",
@@ -98,12 +99,21 @@ CATEGORIES: Mapping[str, str] = {
     "media-free-folder": "the folder holds no media file at all",
     "rebuild-donor": "the file a kept rebuild was made from, and the rebuild is there",
     "superseded-copy": "a kept item covers this one, named in the manifest",
+    "resolved-duplicate": (
+        "a copy of the same film the owner's rules keep instead, and every "
+        "user's watched state is on it"
+    ),
 }
 
 
 #: The categories that remove one copy because another is kept. Each one
 #: reads the kept copy's payload before anything moves.
-KEPT_COPY_CATEGORIES = frozenset({"rebuild-donor", "superseded-copy"})
+KEPT_COPY_CATEGORIES = frozenset({"rebuild-donor", "superseded-copy", "resolved-duplicate"})
+
+#: The categories whose play state may be non-blank, because it was carried
+#: onto the kept item first. Instead of "nobody has a position in it" they
+#: check that the kept item holds everything this one records, per user.
+CARRIED_STATE_CATEGORIES = frozenset({"resolved-duplicate"})
 
 #: Reads one kept file and says whether its payload is there and plays.
 KeeperCheck = Callable[[Path], IntegrityReport]
@@ -313,7 +323,10 @@ def preconditions(
         str(candidate.path),
     ))
 
-    checks.append(_play_state_check(client, candidate.item_id, users))
+    if candidate.category in CARRIED_STATE_CATEGORIES:
+        checks.append(_state_carried_check(client, candidate, users))
+    else:
+        checks.append(_play_state_check(client, candidate.item_id, users))
 
     contents: FolderContents | None = None
     kept_file: Path | None = None
@@ -440,6 +453,36 @@ def _play_state_check(client: Client, item_id: str, users: Sequence[str]) -> Che
         name,
         not watched,
         f"{len(watched)} of {len(names)} user(s) do" if watched
+        else f"{len(names)} user(s) checked",
+    )
+
+
+def _state_carried_check(client: Client, candidate: Candidate, users: Sequence[str]) -> Check:
+    """Every user's state on this copy is held by the kept item too.
+
+    A duplicate that somebody watched may go only once its history is on the
+    copy that stays; the resolver writes it there first, and this reads both
+    rows again, now, for every user.
+    """
+    from ..userdata import UserState, carries
+
+    name = "every user's watched state is on the kept item"
+    if not candidate.keeper_id:
+        return Check(name, False, "no kept item is named to carry it")
+    names, why_not = resolve_users(client, users)
+    if not names:
+        return Check(name, False, why_not)
+    here = user_data(client, candidate.item_id, names)
+    kept = user_data(client, candidate.keeper_id, names)
+    short = [
+        user for user in names
+        if not carries(UserState.from_server(kept.get(user)),
+                       UserState.from_server(here.get(user)))
+    ]
+    return Check(
+        name,
+        not short,
+        f"{len(short)} of {len(names)} user(s) would lose state" if short
         else f"{len(names)} user(s) checked",
     )
 
