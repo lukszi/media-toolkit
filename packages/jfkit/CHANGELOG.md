@@ -101,6 +101,9 @@ day the work was done.
   that name exists (unless `replace=True`), creates without `/F`, and then
   starts it with `/Run`. `launch_detached()` returns the list of commands;
   `detached_commands()` is new.
+- **A refused request closes its response.** Every error status left the
+  server's response open until the garbage collector found it, one per
+  refusal and one per retry. It is read and closed where it is caught.
 
 ### Packaging
 

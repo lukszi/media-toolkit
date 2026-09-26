@@ -219,6 +219,31 @@ def test_retrying_gives_up_and_reports_the_status(server: tuple[str, Recorder]) 
     assert recorder.flaky_calls == 3
 
 
+@pytest.mark.parametrize("status", [404, 503])
+def test_every_refused_response_is_closed(status: int) -> None:
+    """A refusal carries the open response; each one is closed, retried or not.
+
+    Left to the garbage collector it holds a connection until it runs, and
+    newer interpreters say so with a warning on every refused request.
+    """
+    import urllib.error
+    from email.message import Message
+
+    bodies: list[io.BytesIO] = []
+
+    def refusing(request: object, timeout: float) -> object:
+        body = io.BytesIO(b"no")
+        bodies.append(body)
+        raise urllib.error.HTTPError("http://127.0.0.1/x", status, "no", Message(), body)
+
+    client = make_client("http://127.0.0.1:8096", opener=refusing)
+    with pytest.raises(ServerRefused) as caught:
+        client.get("/x")
+    assert caught.value.status == status
+    assert len(bodies) == (3 if status == 503 else 1)
+    assert all(body.closed for body in bodies)
+
+
 def test_a_write_is_never_retried(server: tuple[str, Recorder]) -> None:
     """One refresh that fails is better than three that half-succeeded."""
     url, recorder = server

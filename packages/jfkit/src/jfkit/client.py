@@ -197,7 +197,13 @@ class Client:
                         return None
                     return json.loads(raw.decode("utf-8"))
             except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", "replace")[:400]
+                # The error carries the open response. Read what it says and
+                # close it here: left to the garbage collector, every refused
+                # or retried request leaks a connection until it happens to run.
+                try:
+                    detail = exc.read().decode("utf-8", "replace")[:400]
+                finally:
+                    exc.close()
                 if exc.code in self.retry.statuses and method in IDEMPOTENT \
                         and attempt < self.retry.attempts:
                     last = exc
