@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="872" viewBox="0 0 920 872" role="img" aria-labelledby="t d">
+<title id="t">jfkit dedupe, dry run</title>
+<desc id="d">A dry run of jfkit dedupe over three invented films: one safe to resolve, one kept as two different cuts, one blocked because the best copy does not play. Nothing is changed.</desc>
+<rect x="0.5" y="0.5" width="919" height="871" rx="12" fill="#0D1117" stroke="#3D444D"/>
+<path d="M0.5 12.5a12 12 0 0 1 12-12h895a12 12 0 0 1 12 12v21.5h-919z" fill="#161B22"/>
+<line x1="0.5" y1="34" x2="919.5" y2="34" stroke="#3D444D"/>
+<circle cx="22" cy="17.5" r="6" fill="#FF5F57"/><circle cx="42" cy="17.5" r="6" fill="#FEBC2E"/><circle cx="62" cy="17.5" r="6" fill="#28C840"/>
+<text x="460" y="22" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#9198A1">jfkit dedupe — dry run, nothing changes</text>
+<g font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" fill="#C9D1D9" xml:space="preserve" style="white-space:pre">
+<text x="20" y="58"><tspan fill="#7EE787">$</tspan> <tspan fill="#F0F6FC" font-weight="600">jfkit dedupe --type movie --plan-out dedupe-plan.json</tspan></text>
+<text x="20" y="77">3&#160;group(s):&#160;1&#160;SAFE,&#160;1&#160;KEEP_BOTH,&#160;1&#160;BLOCKED,&#160;0&#160;NOT_DUPLICATE</text>
+<text x="20" y="96">&#160;&#160;7&#160;film&#160;and&#160;episode&#160;row(s)&#160;read</text>
+<text x="20" y="115">[1]&#160;SAFE&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Movie&#160;&#160;&#160;Tmdb=1002&#160;&#160;Blue&#160;Canyon&#160;(1998)</text>
+<text x="20" y="134">&#160;&#160;&#160;&#160;&#160;&#160;keep&#160;&#160;/srv/media/movies/Blue&#160;Canyon&#160;(1998)/Blue&#160;Canyon&#160;(1998).mkv&#160;&#160;(1920x1080,&#160;6&#160;ch,&#160;unknown,&#160;118.4&#160;min,</text>
+<text x="20" y="153">21.63&#160;GiB)</text>
+<text x="20" y="172">&#160;&#160;&#160;&#160;&#160;&#160;park&#160;&#160;/srv/media/movies/Blue&#160;Canyon&#160;(1998)&#160;old/Blue&#160;Canyon&#160;(1998).mkv&#160;&#160;(1280x720,&#160;2&#160;ch,&#160;unknown,&#160;118.4</text>
+<text x="20" y="191">min,&#160;4.37&#160;GiB)</text>
+<text x="20" y="210">&#160;&#160;&#160;&#160;&#160;&#160;-&#160;Blue&#160;Canyon&#160;(1998).mkv&#160;keeps&#160;everything&#160;the&#160;other&#160;copies&#160;have</text>
+<text x="20" y="229">&#160;&#160;&#160;&#160;&#160;&#160;-&#160;preferred&#160;to&#160;Blue&#160;Canyon&#160;(1998).mkv&#160;for&#160;channels</text>
+<text x="20" y="248">&#160;&#160;&#160;&#160;&#160;&#160;note:&#160;the&#160;keeper's&#160;payload&#160;is&#160;there&#160;(decoded)</text>
+<text x="20" y="267">[2]&#160;KEEP_BOTH&#160;&#160;&#160;&#160;&#160;Movie&#160;&#160;&#160;Tmdb=1004&#160;&#160;Hollow&#160;Lantern&#160;(2004)</text>
+<text x="20" y="286">&#160;&#160;&#160;&#160;&#160;&#160;copy&#160;&#160;/srv/media/movies/Hollow&#160;Lantern&#160;(2004)/Hollow&#160;Lantern&#160;(2004).mkv&#160;&#160;(1920x1080,&#160;6&#160;ch,&#160;unknown,&#160;112.0</text>
+<text x="20" y="305">min,&#160;18.02&#160;GiB)</text>
+<text x="20" y="324">&#160;&#160;&#160;&#160;&#160;&#160;copy&#160;&#160;/srv/media/movies/Hollow&#160;Lantern&#160;(2004)&#160;extended/Hollow&#160;Lantern&#160;(2004).mkv&#160;&#160;(1920x1080,&#160;6&#160;ch,</text>
+<text x="20" y="343">unknown,&#160;131.5&#160;min,&#160;20.95&#160;GiB)</text>
+<text x="20" y="362">&#160;&#160;&#160;&#160;&#160;&#160;-&#160;the&#160;running&#160;times&#160;differ&#160;by&#160;19.5&#160;min,&#160;more&#160;than&#160;10&#160;min:&#160;different&#160;cuts,&#160;both&#160;kept</text>
+<text x="20" y="381">[3]&#160;BLOCKED&#160;&#160;&#160;&#160;&#160;&#160;&#160;Movie&#160;&#160;&#160;Tmdb=1003&#160;&#160;Winter&#160;Tide&#160;(2011)</text>
+<text x="20" y="400">&#160;&#160;&#160;&#160;&#160;&#160;keep&#160;&#160;/srv/media/movies/Winter&#160;Tide&#160;(2011)/Winter&#160;Tide&#160;(2011).mkv&#160;&#160;(1920x1080,&#160;6&#160;ch,&#160;unknown,&#160;104.2&#160;min,</text>
+<text x="20" y="419">19.80&#160;GiB)</text>
+<text x="20" y="438">&#160;&#160;&#160;&#160;&#160;&#160;park&#160;&#160;/srv/media/movies/Winter&#160;Tide&#160;(2011)&#160;copy/Winter&#160;Tide&#160;(2011).mkv&#160;&#160;(1920x1080,&#160;2&#160;ch,&#160;unknown,&#160;104.2</text>
+<text x="20" y="457">min,&#160;9.12&#160;GiB)</text>
+<text x="20" y="476">&#160;&#160;&#160;&#160;&#160;&#160;-&#160;Winter&#160;Tide&#160;(2011).mkv&#160;keeps&#160;everything&#160;the&#160;other&#160;copies&#160;have</text>
+<text x="20" y="495">&#160;&#160;&#160;&#160;&#160;&#160;-&#160;preferred&#160;to&#160;Winter&#160;Tide&#160;(2011).mkv&#160;for&#160;channels</text>
+<text x="20" y="514">&#160;&#160;&#160;&#160;&#160;&#160;-&#160;the&#160;keeper&#160;Winter&#160;Tide&#160;(2011).mkv&#160;failed&#160;its&#160;payload&#160;check:&#160;stream&#160;0&#160;(video)&#160;decodes&#160;to&#160;2618.4&#160;s&#160;of&#160;a</text>
+<text x="20" y="533">6252.0&#160;s&#160;container&#160;(42%)&#160;--&#160;another&#160;copy&#160;may&#160;be&#160;the&#160;only&#160;one&#160;that&#160;plays;&#160;nothing&#160;is&#160;parked</text>
+<text x="20" y="571">jfkit&#160;dedupe:&#160;6&#160;step(s),&#160;plan&#160;5e0c93a1d7b24f68</text>
+<text x="20" y="590">&#160;&#160;[carry:0001]&#160;carry&#160;onto&#160;Blue&#160;Canyon&#160;(1998).mkv&#160;for&#160;sam:&#160;unplayed,&#160;count&#160;0&#160;-&gt;&#160;played,&#160;count&#160;2</text>
+<text x="20" y="609">&#160;&#160;[park:0001]&#160;park&#160;/srv/media/movies/Blue&#160;Canyon&#160;(1998)&#160;old/Blue&#160;Canyon&#160;(1998).mkv&#160;(kept:&#160;/srv/media/movies/Blue</text>
+<text x="20" y="628">Canyon&#160;(1998)/Blue&#160;Canyon&#160;(1998).mkv)</text>
+<text x="20" y="647">&#160;&#160;[sidecar:0001]&#160;park&#160;/srv/media/movies/Blue&#160;Canyon&#160;(1998)&#160;old/Blue&#160;Canyon&#160;(1998).eng.srt&#160;with&#160;its&#160;video</text>
+<text x="20" y="666">&#160;&#160;[sidecar:0002]&#160;park&#160;/srv/media/movies/Blue&#160;Canyon&#160;(1998)&#160;old/Blue&#160;Canyon&#160;(1998).nfo&#160;with&#160;its&#160;video</text>
+<text x="20" y="685">&#160;&#160;[folder:0001]&#160;park&#160;the&#160;release&#160;folder&#160;/srv/media/movies/Blue&#160;Canyon&#160;(1998)&#160;old,&#160;left&#160;with&#160;no&#160;video</text>
+<text x="20" y="704">&#160;&#160;[notify]&#160;tell&#160;the&#160;server&#160;2&#160;path(s)&#160;are&#160;gone</text>
+<text x="20" y="723">&#160;&#160;note:&#160;1&#160;watched-state&#160;row(s)&#160;carried&#160;onto&#160;keepers&#160;first</text>
+<text x="20" y="742">&#160;&#160;note:&#160;1&#160;group(s)&#160;resolved,&#160;1&#160;copy(ies)&#160;parked,&#160;4.4&#160;GiB</text>
+<text x="20" y="761">&#160;&#160;note:&#160;this&#160;removes&#160;'Blue&#160;Canyon&#160;(1998)&#160;old',&#160;a&#160;top-level&#160;folder&#160;of&#160;the&#160;library&#160;at&#160;/srv/media/movies:&#160;expect</text>
+<text x="20" y="780">the&#160;server&#160;to&#160;validate&#160;that&#160;whole&#160;library&#160;(every&#160;folder&#160;below&#160;it&#160;listed&#160;again),&#160;so&#160;schedule&#160;it&#160;for&#160;a&#160;quiet&#160;disk</text>
+<text x="20" y="799">plan&#160;saved&#160;to&#160;dedupe-plan.json</text>
+<text x="20" y="818">nothing&#160;was&#160;changed:&#160;this&#160;was&#160;a&#160;dry&#160;run&#160;(--apply&#160;runs&#160;it)</text>
+<text x="20" y="837"><tspan fill="#7EE787">$</tspan> <tspan fill="#F0F6FC">&#x2588;</tspan></text>
+</g>
+</svg>
