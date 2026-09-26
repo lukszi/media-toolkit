@@ -48,7 +48,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -454,7 +454,17 @@ def gate(
 
     for session in sessions:
         playing = session.get("NowPlayingItem") or {}
-        if not isinstance(playing, Mapping) or not on_device(playing.get("Path"), device):
+        if not isinstance(playing, Mapping) or not playing:
+            continue
+        if not playing.get("Path"):
+            signals.append(Signal(
+                "playback",
+                f"{session.get('UserName') or 'a user'} is playing "
+                f"{playing.get('Name') or 'an item'} from a path the server did not give",
+                holds=False,
+            ))
+            continue
+        if not on_device(playing.get("Path"), device):
             continue
         who = session.get("UserName") or "a user"
         what = playing.get("Name") or "an item"
@@ -559,7 +569,7 @@ def server_view(
             for row in (found if isinstance(found, list) else [])
             if isinstance(row, Mapping) and str(row.get("State") or "").lower() == "running"
         )
-        sessions = tuple(client.sessions())
+        sessions = tuple(_with_paths(client, client.sessions()))
         recent: tuple[Mapping[str, Any], ...] = ()
         if recent_window_s > 0 and client.user_id:
             since = (now or datetime.now(UTC)) - timedelta(seconds=recent_window_s)
@@ -576,6 +586,22 @@ def server_view(
         text = str(exc).strip()
         return ServerView(error=text.splitlines()[0] if text else type(exc).__name__)
     return ServerView(running_tasks=tasks, sessions=sessions, recent=recent)
+
+
+def _with_paths(
+    client: Client, sessions: Iterable[Mapping[str, Any]]
+) -> Iterator[Mapping[str, Any]]:
+    """Sessions, each playing item's path filled in where the record left it out."""
+    for session in sessions:
+        playing = session.get("NowPlayingItem")
+        if isinstance(playing, Mapping) and not playing.get("Path") and playing.get("Id"):
+            try:
+                path = client.item(str(playing["Id"])).get("Path")
+            except Exception:  # an unknown path is reported as such by the gate
+                path = None
+            if path:
+                session = {**session, "NowPlayingItem": {**playing, "Path": path}}
+        yield session
 
 
 def observe(

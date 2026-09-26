@@ -324,3 +324,17 @@ def test_the_gate_verb_names_playback_and_exits_non_zero(
         ]) == 1
     document = json.loads(capsys.readouterr().out)
     assert document["red_by"] == ["playback"]
+
+
+def test_a_playing_item_without_a_path_is_looked_up_or_noted() -> None:
+    with running_server() as (url, recorder):
+        item = recorder.items[6]
+        recorder.sessions = [{"UserName": "first-fixture-user",
+                              "NowPlayingItem": {"Id": item["Id"], "Name": item["Name"]}}]
+        view = server_view(client_for(url), recent_window_s=0)
+    assert view.sessions[0]["NowPlayingItem"]["Path"] == item["Path"]
+    assert gate(DEVICE, processes=[], sessions=view.sessions).red_by == ("playback",)
+    unknown = gate(DEVICE, processes=[], sessions=[
+        {"NowPlayingItem": {"Name": "Northwind S01E03"}}
+    ])
+    assert unknown.open and "did not give" in str(unknown)
