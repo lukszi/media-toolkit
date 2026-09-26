@@ -129,11 +129,12 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
-          pip install pytest
+          pip install pytest pytest-xdist
 
       # First, the run that has to work on a machine with nothing installed.
       # If this selection ever needs a program, a test has grown a dependency
-      # it did not declare.
+      # it did not declare. Every pytest run here is parallel: the root
+      # pyproject.toml asks for "-n auto", as it does on a workstation.
       - name: tests with no external programs
         run: pytest -m "not needs_ffmpeg and not needs_mkvtoolnix and not needs_asr"
 
@@ -144,6 +145,18 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install -y ffmpeg mkvtoolnix
 
+      # The generated media, kept between runs. The key is what the set is
+      # built from; the generator also keys its own directory by the programs
+      # that encode, so a runner whose ffmpeg changed builds a fresh set beside
+      # a restored one rather than trusting it. No restore-keys: a new key
+      # starts empty, so an old set is never carried forward and saved again.
+      - name: restore the generated fixtures
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: tests/_fixtures
+          key: fixtures-${{ runner.os }}-py${{ matrix.python }}-${{ hashFiles('tests/fixtures/make_fixtures.py', 'tests/synthetic.py', 'packages/dubalign/src/dubalign/*.py') }}
+      # Built once here, before the workers start, rather than by the first
+      # worker to want it while the rest wait on its lock.
       - name: build the fixtures
         run: python -m tests.fixtures build
       - name: the whole suite, minus the one that wants a speech model
