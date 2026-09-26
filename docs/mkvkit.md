@@ -201,10 +201,11 @@ and an ETA.
 evidence; `--all` adds the rest. `--json` and `--tsv` write every verdict.
 `--titles` names each file that is not OK by the server item that plays it
 (through `jfkit.query`). Confirmed corrupt files are printed as a `jfkit
-delete` manifest (`--manifest PATH` writes it) under the category `corrupt`,
-which `jfkit delete` does not check yet: the manifest is for a person to
-release. The exit code is 0 only when every file is OK and every file was
-reached.
+delete` manifest (`--manifest PATH` writes it) under the category
+`corrupt-unplayable`, which `jfkit delete` checks again before anything
+moves: it reads the payload itself and refuses while another catalogued copy
+exists. The manifest is for a person to read and release. The exit code is 0
+only when every file is OK and every file was reached.
 
 **Read-only, always.** Nothing is moved, renamed or deleted.
 

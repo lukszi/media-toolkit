@@ -471,7 +471,7 @@ def test_the_manifest_lists_only_confirmed_corrupt_files() -> None:
     ])
     assert rows == [{
         "item_id": "00000000-0000-0000-0000-000000000001", "path": "/srv/media/a.mkv",
-        "category": "corrupt", "reason": "stage 2: packets for 2 s",
+        "category": "corrupt-unplayable", "reason": "stage 2: packets for 2 s",
     }]
 
 

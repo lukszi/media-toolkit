@@ -20,8 +20,8 @@ and not say so.
   installed, a state file that makes a re-run read only what changed and an
   interrupted run resume, a throughput and ETA line per disk, and a verdict
   per file (OK, SUSPECT, CORRUPT, UNREADABLE) with its evidence as a table,
-  JSON and TSV. Read-only; corrupt files are printed as a deletion manifest
-  for a person to release.
+  JSON and TSV. Read-only; corrupt files are printed as a `jfkit delete`
+  manifest in its `corrupt-unplayable` category, for a person to release.
 - **A `[policy.dedupe]` table.** The duplicate resolver's rules as
   configuration: the running-time tolerance and the gap that makes two
   cuts, the order keepers are ranked in, what counts as lossless audio, a

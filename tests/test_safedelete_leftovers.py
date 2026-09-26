@@ -481,3 +481,23 @@ def test_delete_takes_a_leftover_manifest_with_no_item(
     assert code == 1, "the film is refused, so the run says so"
     assert "1 would be parked, 1 refused" in out or "1 refused" in out
     assert not note.exists() and film.is_file()
+
+
+def test_the_health_manifest_is_read_as_the_corrupt_category(tmp_path: Path) -> None:
+    """``mkvkit health --manifest`` writes rows ``jfkit delete`` reads as
+    ``corrupt-unplayable``: one name for one category on both sides."""
+    from jfkit.safedelete import load_manifest
+    from mkvkit.health import CORRUPT as CONFIRMED
+    from mkvkit.health import MANIFEST_CATEGORY, FileResult, manifest_rows, manifest_text
+
+    assert MANIFEST_CATEGORY == CORRUPT
+    manifest = tmp_path / "corrupt.tsv"
+    manifest.write_text(manifest_text(manifest_rows([
+        FileResult(str(tmp_path / "a.mkv"), 1, 1, str(tmp_path), CONFIRMED, stage=2,
+                   evidence=("stage 2: packets for 2 s",),
+                   item_id="00000000-0000-0000-0000-000000000001"),
+    ])), encoding="utf-8")
+    (candidate,) = load_manifest(manifest)
+    assert candidate.category == CORRUPT and candidate.category in CATEGORIES
+    assert candidate.item_id == "00000000-0000-0000-0000-000000000001"
+    assert candidate.path == tmp_path / "a.mkv"

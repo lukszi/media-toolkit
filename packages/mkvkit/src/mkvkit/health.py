@@ -1139,10 +1139,13 @@ def write_tsv(path: Path | str, results: Iterable[FileResult], *,
     Path(path).write_text(tsv_text(results, include_ok=include_ok), encoding="utf-8")
 
 
-#: The category a corrupt file is proposed under. ``jfkit delete`` refuses a
-#: category nobody released, and it does not check this one yet: the
-#: manifest is for a person to read and release, not for a pipeline to run.
-MANIFEST_CATEGORY = "corrupt"
+#: The category a corrupt file is proposed under: ``jfkit delete``'s
+#: ``corrupt-unplayable``, which reads the payload again before anything
+#: moves and refuses while another catalogued copy exists. ``jfkit delete``
+#: refuses a category nobody released, so the manifest is still for a person
+#: to read and release, not for a pipeline to run. (mkvkit does not import
+#: jfkit; a test keeps the two names the same.)
+MANIFEST_CATEGORY = "corrupt-unplayable"
 
 
 def manifest_rows(results: Iterable[FileResult]) -> list[dict[str, str]]:
