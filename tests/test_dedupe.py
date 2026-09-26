@@ -644,6 +644,29 @@ def test_the_gate_is_asked_before_every_read() -> None:
     assert verdict.verdict == BLOCKED and "busy" in verdict.reasons[-1]
 
 
+def test_the_gate_is_the_one_health_waits_on() -> None:
+    """dedupe reads behind the same gate as ``mkvkit health``: every signal,
+    looked at before every copy, and a disk given up after ``--gate-wait``."""
+    import argparse
+
+    from jfkit.config import Config
+    from jfkit.dedupe.cli import _gate
+    from jfkit.jobs import Gate, GateTimeout, LaneGate
+
+    config = Config()
+    assert _gate(argparse.Namespace(no_gate=True, gate_wait=0.0), config) is None
+    gate = _gate(argparse.Namespace(no_gate=False, gate_wait=0.0), config)
+    assert isinstance(gate, LaneGate)
+    assert gate.every_s == 0.0 and gate.timeout_s == 0.0
+
+    def held(device: str) -> Gate:
+        return Gate(device, ("somebody is playing from it",))
+
+    gate.look = held  # type: ignore[method-assign]
+    with pytest.raises(GateTimeout):
+        gate("X:", None)
+
+
 # ================================================================== the plan
 @pytest.fixture
 def server() -> Iterator[tuple[str, Recorder]]:

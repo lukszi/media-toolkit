@@ -99,6 +99,13 @@ day the work was done.
 
 ### Fixed
 
+- **`dedupe` and `leftovers` wait on the whole gate.** Both asked the old
+  gate only about named readers and running tasks, so a disk somebody was
+  playing from, a reader whose command line is hidden, or a lock file did
+  not hold them. They now use the gate `mkvkit health` waits on
+  (`healthlink.lane_gate`): `dedupe` looks before every copy it reads and
+  gives a copy up after `--gate-wait`; `leftovers` looks once per device and
+  leaves a RED device out.
 - **`survey duplicates` does not call segments duplicates.** Files named as
   parts of one episode (`S01E01a`, `S01E01b`, `part1`) share its identifiers
   and were grouped as copies. The segment is part of the group key now, and

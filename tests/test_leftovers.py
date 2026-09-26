@@ -501,14 +501,13 @@ def test_a_held_device_is_not_walked(
     server: tuple[str, Recorder], library: dict[str, Any], tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from jfkit.jobs import Gate
-    from jfkit.leftovers import cli as leftovers_cli
+    from jfkit.jobs import Gate, LaneGate
 
     url, recorder = server
     recorder.items[:] = library["rows"]
     config = _config(tmp_path, url, monkeypatch)
-    monkeypatch.setattr(leftovers_cli, "device_gate",
-                        lambda device, **_: Gate(device, ("somebody is reading it",)))
+    monkeypatch.setattr(LaneGate, "look",
+                        lambda self, device: Gate(device, ("somebody is reading it",)))
     assert jfkit_cli.main(["--config", str(config), "leftovers", "missing",
                            str(library["root"])]) == 3
     out = capsys.readouterr().out

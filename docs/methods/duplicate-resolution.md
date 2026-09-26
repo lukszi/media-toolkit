@@ -82,10 +82,12 @@ for a person.
 
 **Every read goes through `mkvkit.lanes.map_by_device`**: one reader per
 physical disk, the disks side by side. There is no switch for a second
-reader. Before each read the device gate is asked (`jfkit jobs gate`) whether
-anybody else is reading that disk or the server is running a task that reads
-everything; the resolver waits up to `--gate-wait` seconds and then gives up
-on that copy, which blocks its group.
+reader. Before each read the device gate is asked -- the same
+`jfkit.jobs.LaneGate` that `mkvkit health` waits on, built by
+`jfkit.healthlink.lane_gate` -- whether anybody else is reading that disk,
+playing from it or holding a lock on it, or the server is running a task or
+changing items there; the resolver waits up to `--gate-wait` seconds and then
+gives up on that copy, which blocks its group.
 
 ## 3. May this copy replace that one?
 

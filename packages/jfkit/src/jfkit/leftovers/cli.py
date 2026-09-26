@@ -2,7 +2,7 @@
 
 Both walk the library folders the server lists (or the ones named, or the
 ones the configuration names), one device after the other, asking the
-device gate (:func:`jfkit.jobs.gate`) before each device; a device the gate
+device gate (:func:`jfkit.healthlink.lane_gate`) before each device; a device the gate
 holds is not walked, and the run says so and exits 3.
 
 ``sweep`` is a dry run unless ``--apply`` is given, and ``--apply`` needs
@@ -32,11 +32,10 @@ from mkvkit.lanes import map_by_device
 from mkvkit.steps import add_plan_arguments, apply, load_plan
 from mkvkit.walk import SkipReason
 
-from .. import segments as segments_module
 from ..client import Client
 from ..commands import LIST_HELP, add_write_arguments, client_from, expand_lists
 from ..config import Config
-from ..jobs import gate as device_gate
+from ..healthlink import lane_gate
 from ..safedelete.catalogue import Catalogue, path_key
 from ..safedelete.junk import load_rules
 from ..safedelete.leftovers import CORRUPT, DEAD_FOLDER, RELEASE_JUNK, SAMPLE
@@ -161,29 +160,28 @@ def _roots(args: argparse.Namespace, client: Client, config: Config) -> list[str
     return [str(p) for p in (config.paths.movies, config.paths.series) if p]
 
 
-def _gate(args: argparse.Namespace, client: Client) -> Callable[[Device], str | None]:
+def _gate(args: argparse.Namespace, config: Config) -> Callable[[Device], str | None]:
+    """One look at each device before it is walked or read, with every signal
+    the gate knows (:func:`jfkit.healthlink.lane_gate`); a RED device is not
+    waited for, it is left out and said."""
     if args.no_gate:
         return lambda _device: None
-    try:
-        running = [task.name for task in segments_module.running(client)]
-    except Exception as exc:  # a server that cannot say is not a busy one
-        log.warning("the server's running tasks could not be read: %s", exc)
-        running = []
+    lanes = lane_gate(config, every_s=0.0)
 
     def ask(device: Device) -> str | None:
-        found = device_gate(device, running_tasks=running)
+        found = lanes.look(device)
         print(found, file=sys.stderr)
         return None if found.open else "; ".join(found.reasons)
     return ask
 
 
 def _walk(
-    args: argparse.Namespace, client: Client, roots: Sequence[str], catalogue: Catalogue,
+    args: argparse.Namespace, config: Config, roots: Sequence[str], catalogue: Catalogue,
 ) -> Scan:
     rules = load_rules(args.rules)
     return scan(
         roots, catalogue, rules=rules, exclude=args.exclude,
-        exclude_paths=args.exclude_path, gate=_gate(args, client),
+        exclude_paths=args.exclude_path, gate=_gate(args, config),
     )
 
 
@@ -268,13 +266,13 @@ def _sweep(args: argparse.Namespace, config: Config) -> int:
         print(f"the parking directory {parked} is inside a library folder; choose one "
               "outside every library. Nothing was moved.")
         return 2
-    found = _walk(args, client, roots, catalogue)
+    found = _walk(args, config, roots, catalogue)
     findings = list(found.findings)
     reports: dict[str, integrity.IntegrityReport] = {}
     if args.corrupt:
         measured, reports = _measure(
             expand_lists(args.corrupt), decode=args.integrity == "full",
-            gate=_gate(args, client),
+            gate=_gate(args, config),
         )
         findings += measured
     assessed = assess(
@@ -407,7 +405,7 @@ def _write(folder: Path, found: Scan, assessed: Sequence[Assessed], plan: Any) -
 def _missing(args: argparse.Namespace, config: Config) -> int:
     client = client_from(args, config)
     catalogue = Catalogue.fetch(client)
-    found = _walk(args, client, _roots(args, client, config), catalogue)
+    found = _walk(args, config, _roots(args, client, config), catalogue)
     virtual = missing_module.fetch_virtual(client)
     rows = missing_module.find_missing(catalogue, found, virtual=virtual)
     for line in _walk_lines(found):

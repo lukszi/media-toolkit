@@ -17,12 +17,10 @@ import dataclasses
 import io
 import json
 import logging
-import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from mkvkit.devices import Device
 from mkvkit.lanes import DEFAULT_WORKERS
 from mkvkit.steps import (
     Plan,
@@ -34,11 +32,10 @@ from mkvkit.steps import (
     status,
 )
 
-from .. import segments as segments_module
 from ..client import Client
-from ..commands import add_write_arguments, client_from, server_configured
+from ..commands import add_write_arguments, client_from
 from ..config import Config
-from ..jobs import gate as device_gate
+from ..healthlink import lane_gate
 from ..surveys import fetch_items
 from .groups import GroupScan, find_groups
 from .plan import actions, build_plan
@@ -108,27 +105,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[ty
 
 
 # ------------------------------------------------------------------ the gate
-def _gate(args: argparse.Namespace, config: Config, client: Client) -> BeforeEach | None:
+def _gate(args: argparse.Namespace, config: Config) -> BeforeEach | None:
+    """The device gate before every read: the one ``mkvkit health`` waits on.
+
+    It holds a disk that somebody plays from, a hidden or named reader, a
+    running server task, recent library changes or a lock file, looks again
+    before every copy (a probe and a payload read are whole-file work), and
+    gives the copy up after ``--gate-wait`` seconds of RED.
+    """
     if args.no_gate or not config.jobs.device_gate:
         return None
-    ask_server = server_configured(config)
-
-    def before(device: Device, _item: object) -> None:
-        deadline = time.monotonic() + max(0.0, args.gate_wait)
-        while True:
-            running: list[str] = []
-            if ask_server:
-                running = [t.name for t in segments_module.running(client)]
-            found = device_gate(device, running_tasks=running)
-            if found.open:
-                return
-            left = deadline - time.monotonic()
-            if left <= 0:
-                raise RuntimeError(f"the disk is busy: {'; '.join(found.reasons)}")
-            log.info("%s", found)
-            time.sleep(min(15.0, left))
-
-    return before
+    return lane_gate(config, every_s=0.0, timeout_s=max(0.0, args.gate_wait))
 
 
 # ----------------------------------------------------------------- rendering
@@ -270,7 +257,7 @@ def _dedupe(args: argparse.Namespace, config: Config) -> int:
     scan = find_groups(items)
     log.info("%d group(s) from %d row(s)", len(scan.groups), scan.items_seen)
 
-    verdicts = resolve(scan.groups, rules, before_each=_gate(args, config, reader),
+    verdicts = resolve(scan.groups, rules, before_each=_gate(args, config),
                        config=config)
     parked = args.parked or config.paths.parked or DEFAULT_PARKED
     planned = build_plan(reader, verdicts, parked=parked, workers=args.jobs)

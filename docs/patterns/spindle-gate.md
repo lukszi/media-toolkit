@@ -135,6 +135,12 @@ happening, not where. When the counters show the device quiet, both are
 reported as notes and do not hold it. Every other signal holds it outright,
 and the gate names each one that did.
 
+Every verb that reads media content waits on this one gate, not on a copy
+of part of it: `mkvkit health`, `jfkit dedupe` and `jfkit leftovers` build it
+with `jfkit.healthlink.lane_gate` and pass it to `lanes.map_by_device` as
+`before_each` (`leftovers` looks once per device before walking it, and
+leaves a RED device out instead of waiting).
+
 ---
 
 ## The shape of a job that uses this
