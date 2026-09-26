@@ -520,13 +520,23 @@ def client_for(url: str, **kwargs: Any) -> Any:
     return Client(config, **defaults)
 
 
+#: How often the serving loop checks whether it has been asked to stop.
+SHUTDOWN_POLL_S = 0.005
+
+
 @contextmanager
 def fake_server() -> Iterator[tuple[str, Recorder]]:
     """Run the stand-in on a loopback port; yield its URL and its recorder."""
     recorder = Recorder()
     handler = type("BoundHandler", (_Handler,), {"recorder": recorder})
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # ``shutdown`` waits for the serving loop to notice, and the loop only
+    # looks between polls: at the default half second, every test that used
+    # the stand-in paid half a second to stop it. Requests are answered as
+    # they arrive whatever the interval; it only bounds how long stopping takes.
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": SHUTDOWN_POLL_S}, daemon=True
+    )
     thread.start()
     try:
         yield f"http://127.0.0.1:{server.server_port}", recorder
