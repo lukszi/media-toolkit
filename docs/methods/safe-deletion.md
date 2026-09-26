@@ -22,7 +22,7 @@ A candidate declares a category. A category is a *reason*, not a list:
 | category | what it claims |
 |---|---|
 | `byte-identical-twin` | another file with the same bytes is kept |
-| `media-free-folder` | the folder holds no media file at all |
+| `media-free-folder` | the folder holds no media file, and no loose audio or subtitle track |
 | `rebuild-donor` | this is the file a kept rebuild was made from |
 | `superseded-copy` | a kept item, named in the manifest, covers this one |
 

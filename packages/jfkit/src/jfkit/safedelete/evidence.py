@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 __all__ = [
+    "LOOSE_TRACK_SUFFIXES",
     "MEDIA_SUFFIXES",
     "SIDECAR_SUFFIXES",
     "FolderContents",
@@ -44,6 +45,7 @@ __all__ = [
     "Remap",
     "folder_contents",
     "identical",
+    "loose_tracks",
     "media_free",
     "remap_path",
     "sha256_of",
@@ -59,6 +61,15 @@ CHUNK = 16 << 20
 MEDIA_SUFFIXES = frozenset({
     ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".mpg", ".mpeg", ".m2ts",
     ".ts", ".vob", ".iso", ".divx", ".flv", ".webm",
+})
+
+#: A track that lives beside the media instead of inside it: an external
+#: audio track or a subtitle. A folder holding one is not "media-free" in any
+#: sense that matters -- it is the only copy of that track.
+LOOSE_TRACK_SUFFIXES = frozenset({
+    ".mka", ".ac3", ".eac3", ".dts", ".dtshd", ".thd", ".truehd", ".flac",
+    ".aac", ".m4a", ".mp3", ".opus", ".ogg", ".wav", ".mp2",
+    ".srt", ".ass", ".ssa", ".sub", ".idx", ".sup", ".vtt", ".smi",
 })
 
 #: Files that belong to a media file and follow it wherever it goes.
@@ -240,3 +251,19 @@ def media_free(
     return not any(
         entry.is_file() and entry.suffix.lower() in kinds for entry in here.rglob("*")
     )
+
+
+def loose_tracks(folder: Path | str) -> list[Path]:
+    """Every external audio or subtitle file below a folder.
+
+    Reported by the media-free check as a refusal of its own: a folder with
+    no video in it can still hold the only copy of a track.
+    """
+    here = Path(folder)
+    if not here.is_dir():
+        return []
+    return sorted(
+        entry for entry in here.rglob("*")
+        if entry.is_file() and entry.suffix.lower() in LOOSE_TRACK_SUFFIXES
+    )
+

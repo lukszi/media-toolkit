@@ -60,7 +60,14 @@ from ..client import Client
 from ..dto import every_user, fetch, user_data
 from ..errors import ItemNotFound
 from ..refresh import NotifyRefused, library_roots, notify_changed
-from .evidence import FolderContents, Identity, folder_contents, identical, media_free
+from .evidence import (
+    FolderContents,
+    Identity,
+    folder_contents,
+    identical,
+    loose_tracks,
+    media_free,
+)
 
 __all__ = [
     "CATEGORIES",
@@ -289,6 +296,12 @@ def preconditions(
             "the folder holds no media",
             media_free(candidate.path),
             str(candidate.path),
+        ))
+        tracks = loose_tracks(candidate.path)
+        checks.append(Check(
+            "the folder holds no loose audio or subtitle track",
+            not tracks,
+            ", ".join(p.name for p in tracks[:5]) + (" ..." if len(tracks) > 5 else ""),
         ))
     elif candidate.category in {"rebuild-donor", "superseded-copy"}:
         checks.append(_keeper_check(client, candidate))

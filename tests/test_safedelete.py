@@ -389,6 +389,30 @@ def test_a_media_free_folder_is_moved_whole(
     assert (report.allowed[0].parked / "poster.jpg").is_file()
 
 
+def test_a_media_free_folder_holding_a_loose_track_is_refused(
+    server: tuple[str, Recorder], tree: Path, tmp_path: Path
+) -> None:
+    """No video in it, and still the only copy of a subtitle and a dub."""
+    url, recorder = server
+    leftovers = tree / "leftovers"
+    leftovers.mkdir()
+    (leftovers / "poster.jpg").write_bytes(b"x" * 10)
+    (leftovers / "the-quiet-harbour.fra.srt").write_bytes(b"1\n")
+    (leftovers / "the-quiet-harbour.deu.ac3").write_bytes(b"\x0b\x77")
+    recorder.items[0]["Path"] = str(leftovers)
+
+    report = safe_delete(
+        client_for(url, dry_run=False),
+        [Candidate(item_id=FIRST, path=leftovers, category="media-free-folder")],
+        allowed_categories=["media-free-folder"], parked=tmp_path / "parked",
+    )
+    assert report.refused and not report.allowed
+    assert any(
+        "loose audio or subtitle" in c.name for c in report.refused[0].refusals
+    )
+    assert leftovers.is_dir()
+
+
 def test_the_audit_records_the_checks_that_passed_too(
     server: tuple[str, Recorder], tree: Path, tmp_path: Path
 ) -> None:

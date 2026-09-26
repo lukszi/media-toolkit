@@ -101,6 +101,10 @@ day the work was done.
   that name exists (unless `replace=True`), creates without `/F`, and then
   starts it with `/Run`. `launch_detached()` returns the list of commands;
   `detached_commands()` is new.
+- **`delete` refuses a media-free folder that still holds a track.** A
+  `media-free-folder` candidate holding an external audio track or a
+  subtitle is refused: no video in it does not mean nothing irreplaceable
+  in it.
 - **`notify` refuses every library root the server has.** It knew only the
   two folders in `[paths]` and any `--root`, so a library on another volume,
   or one added later, could be notified whole -- a full scan. It now reads
