@@ -119,7 +119,8 @@ dropping -- into a staging directory, never over the input -- and
 `mkvkit verify` compares the two files against a *declared* difference, with
 one payload hash per stream as the evidence. `mkvkit swap` then parks the
 original and puts the rebuild in its exact path, once the rebuild is proved to
-play. `mkvkit chapters` and
+play, and `mkvkit copy` moves a file between volumes with both sides hashed.
+`mkvkit chapters` and
 `mkvkit tags` read, check and write the two elements that are easiest to
 damage by accident. Everything that writes defaults to a dry run.
 

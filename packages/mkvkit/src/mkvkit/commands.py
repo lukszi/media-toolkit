@@ -38,6 +38,7 @@ from . import plan as plan_module
 from . import remux as remux_module
 from . import swap as swap_module
 from . import tags as tags_module
+from . import transfer as transfer_module
 from . import verify as verify_module
 from .chapters import names as chapter_names
 from .chapters import selfcheck as chapter_selfcheck
@@ -766,6 +767,35 @@ def _swap(args: argparse.Namespace, config: Config) -> int:
     return 0 if result.ok else 1
 
 
+# ------------------------------------------------------------------------ copy
+def _register_copy(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    parser = subparsers.add_parser(
+        "copy", help="copy or move a file, hash both sides, and never overwrite"
+    )
+    parser.add_argument("source", type=Path)
+    parser.add_argument("destination", type=Path,
+                        help="a file name, or a folder to copy into")
+    parser.add_argument("--move", action="store_true",
+                        help="remove the source, once the copy is in place and proved")
+    parser.add_argument(
+        "--stage", type=Path, metavar="DIR",
+        help="write the partial file here (same volume as the destination, "
+             "outside anything a media server watches) and rename it into place",
+    )
+    parser.add_argument("--algorithm", default="sha256")
+    add_write_arguments(parser)
+    parser.set_defaults(handler=_copy)
+
+
+def _copy(args: argparse.Namespace, _config: Config) -> int:
+    report = transfer_module.verified_copy(
+        args.source, args.destination, move=args.move, stage=args.stage,
+        dry_run=not args.apply, algorithm=args.algorithm,
+    )
+    print(report)
+    return 0 if report.ok else 1
+
+
 def _no_verb(args: argparse.Namespace, _config: Config) -> int:
     args._parser.print_help()
     return 2
@@ -782,4 +812,5 @@ REGISTRARS = {
     "verify": _register_verify,
     "remux": _register_remux,
     "swap": _register_swap,
+    "copy": _register_copy,
 }

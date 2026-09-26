@@ -214,6 +214,13 @@ The swap procedure that survives contact:
 6. Check afterwards that the identifier, the play state and the name are what
    they were.
 
+Moving a file between volumes -- extras filed on the wrong disk, a folder
+that belongs in another library -- is a copy followed by a delete. Copy it to
+a staging folder on the destination volume, hash what arrived from the
+destination side, rename it into place, and only then remove the source
+(`mkvkit copy --move`). A read straight after the write usually comes from
+the operating system's cache, so on a disk you doubt, read it again later.
+
 `mkvkit swap` does the file half; `jfkit swap` does it with the service and
 the refresh around it.
 

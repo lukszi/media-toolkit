@@ -46,6 +46,7 @@ mkvkit propedit FILE --track UID ...          change a header in place
 mkvkit remux    FILE --staging DIR            rebuild it without some tracks
 mkvkit verify   ORIGINAL BUILT                prove the difference is the one you asked for
 mkvkit swap     KEEPER REPLACEMENT            park the old file, put the new one in its path
+mkvkit copy     SOURCE DESTINATION [--move]   copy or move a file, proved on both sides
 mkvkit langid   jobs|scan|report              identify the spoken language of a track
 ```
 
@@ -118,6 +119,37 @@ are hints to run `integrity`; neither is the check.
 `jfkit delete` runs the full check on the kept copy before it removes another
 copy, and both swaps run it on the replacement before they park an original.
 There is no switch that skips it.
+
+---
+
+## `mkvkit.transfer` -- copy or move, and prove the copy
+
+A move between volumes is a copy followed by a delete, and only the delete
+cannot be undone. `mkvkit copy` does it in the one order that is safe:
+
+```
+mkvkit copy "/srv/one/Northwind/Featurettes/Making Northwind.mkv" \
+    "/srv/two/Northwind/Featurettes" --stage /srv/two/staging --move --apply
+```
+
+1. an existing destination is refused, never replaced;
+2. the file is copied to a partial file -- in `--stage`, a folder on the
+   destination's volume outside anything a media server watches, or beside
+   the destination -- while the source is hashed, and flushed to the device;
+3. the partial file is hashed again, from the destination side, and has to
+   match;
+4. it is renamed into place, without replacing anything that appeared in the
+   meantime, so nothing ever sees a half-written file under its real name;
+5. only then, with `--move`, is the source removed.
+
+A failure at any step removes the partial file and leaves the source as it
+was. The library side is `mkvkit.transfer.verified_copy()`.
+
+**The cache.** The read-back in step 3 comes straight after the write, and
+the operating system usually answers it from memory: it proves what was
+handed to the device, not what the device kept. On a disk you have reason to
+doubt, read the file again later -- `mkvkit integrity`, or a second hash --
+before removing anything else that depends on it. Every report says so.
 
 ---
 

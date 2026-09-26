@@ -36,6 +36,7 @@ mkvkit propedit FILE --track UID ...        change a header in place
 mkvkit remux    FILE --staging DIR          rebuild it without some tracks
 mkvkit verify   ORIGINAL BUILT              prove the difference was intended
 mkvkit swap     KEEPER REPLACEMENT          park the old file, install the new
+mkvkit copy     SOURCE DESTINATION          copy or move, proved on both sides
 mkvkit langid   jobs|scan|report            what language is actually spoken
 ```
 

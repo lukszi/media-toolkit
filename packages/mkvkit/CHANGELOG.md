@@ -26,6 +26,14 @@ and not say so.
   differs from the container's by more than a few seconds it prints each
   track's duration and a warning. `Stream.tagged_duration_s` and
   `probe.duration_disagreements()` are new.
+- **`mkvkit copy SOURCE DESTINATION [--move]` copies and proves it.** It
+  refuses an existing destination, copies to a partial file (optionally in a
+  `--stage` folder on the destination's volume) while hashing the source,
+  hashes the copy again from the destination side, renames it into place
+  without replacing anything, and removes the source of a move only after
+  that. Every report says that a read straight after the write is usually
+  served from the operating system's cache. `mkvkit.transfer.verified_copy()`
+  is the library side.
 - **`swap` proves the replacement plays before the original is parked.**
   The payload check runs in the dry run too; a replacement that fails it,
   or cannot be checked, refuses the swap. `--replacement-check full|quick`
