@@ -26,7 +26,8 @@ token_env = "JFKIT_TOKEN"
 # once will reach a backup, a paste and a screenshot too.
 
 # The account whose view of the library is used. Item queries are scoped to a
-# user by default: an unscoped listing silently omits items.
+# user by default: an unscoped listing silently omits items. The server prints
+# the id with dashes or as 32 bare digits; either form is accepted.
 user_id = "00000000-0000-0000-0000-000000000000"
 
 # The server's own data directory is not read from this file: the command that

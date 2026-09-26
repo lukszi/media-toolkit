@@ -57,6 +57,9 @@ and not say so.
   `IndexError` instead of recording the warning.
 - The chapter-database adapter's disabled message named a command-line flag
   that does not exist; it now names the constructor argument.
+- `server.user_id` refused the bare 32-digit form the server's own API
+  returns. Both forms are accepted now and stored as the dashed lower-case
+  one; anything else is still refused.
 
 ### Packaging
 

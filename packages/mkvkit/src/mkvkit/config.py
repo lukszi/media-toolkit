@@ -64,6 +64,7 @@ __all__ = [
     "discover",
     "load",
     "loads",
+    "normalise_guid",
     "user_config_path",
 ]
 
@@ -77,7 +78,26 @@ FORBIDDEN_SECRET_KEYS = frozenset(
 )
 
 _GUID = re.compile(r"\A[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\Z")
+_GUID_BARE = re.compile(r"\A[0-9a-fA-F]{32}\Z")
 _LANG = re.compile(r"\A[a-z]{2,3}\Z")
+
+
+def normalise_guid(value: str) -> str | None:
+    """The canonical form of an identifier, or None if it is not one.
+
+    The server prints the same identifier two ways: the API returns 32 bare
+    hexadecimal digits, the dashboard and most documentation the dashed
+    8-4-4-4-12 form. Both name the same account, so both are accepted and
+    both come out as the dashed lower-case form, which the server also takes
+    in every route.
+    """
+    text = value.strip()
+    if _GUID.match(text):
+        text = text.replace("-", "")
+    elif not _GUID_BARE.match(text):
+        return None
+    text = text.lower()
+    return f"{text[:8]}-{text[8:12]}-{text[12:16]}-{text[16:20]}-{text[20:]}"
 
 
 class ConfigError(ValueError):
@@ -404,8 +424,14 @@ def _server(reader: _Reader) -> ServerConfig:
             "server: set token_env or token_command, not both"
         )
     user_id = reader.string("server", data, "user_id")
-    if user_id is not None and not _GUID.match(user_id):
-        reader.problems.append("server.user_id must be a globally unique identifier")
+    if user_id is not None:
+        normalised = normalise_guid(user_id)
+        if normalised is None:
+            reader.problems.append(
+                "server.user_id must be a globally unique identifier "
+                "(32 hexadecimal digits, with or without the dashes)"
+            )
+        user_id = normalised
     return ServerConfig(
         url=url, token_env=token_env, token_command=token_command,
         user_id=user_id, data_dir=reader.path("server", data, "data_dir"),

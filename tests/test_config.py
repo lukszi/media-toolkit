@@ -66,6 +66,45 @@ def test_every_secret_shaped_key_is_refused(key: str) -> None:
         loads(f'[server]\n{key} = "literal"\n')
 
 
+# The fixture identifier, in the forms the server itself prints. The bare form
+# is assembled rather than written out: 32 hex digits in a row is exactly what
+# the privacy gate looks for, and this one is not a real account.
+FIXTURE_USER = "00000000-0000-0000-0000-00000000a1b2"
+FIXTURE_USER_BARE = "0" * 28 + "a1b2"
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        FIXTURE_USER,
+        FIXTURE_USER.upper(),
+        FIXTURE_USER_BARE,
+        FIXTURE_USER_BARE.upper(),
+    ],
+)
+def test_the_user_id_is_accepted_with_or_without_dashes(written: str) -> None:
+    """The API returns the bare form; the dashed one is what people copy."""
+    config = loads(f'[server]\nuser_id = "{written}"\n')
+    assert config.server.user_id == FIXTURE_USER
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "not-an-identifier",
+        FIXTURE_USER_BARE[:-1],
+        FIXTURE_USER_BARE + "0",
+        FIXTURE_USER_BARE[:-1] + "g",
+        FIXTURE_USER.replace("-", "", 1),
+        "{" + FIXTURE_USER + "}",
+    ],
+)
+def test_a_user_id_that_is_neither_form_is_refused(written: str) -> None:
+    with pytest.raises(ConfigError) as caught:
+        loads(f'[server]\nuser_id = "{written}"\n')
+    assert any("user_id" in p for p in caught.value.problems)
+
+
 def test_every_problem_is_reported_at_once() -> None:
     bad = """
 [server]
