@@ -29,6 +29,7 @@ Irregular on purpose: a regular pulse matches itself one pulse later.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 
 import numpy as np
@@ -120,6 +121,7 @@ class SyntheticPair:
         return np.asarray([self.true_lag(float(x)) for x in times], dtype=np.float64)
 
 
+@functools.lru_cache(maxsize=4)
 def synthetic_pair(
     *,
     sr: int = ANALYSIS_RATE,
@@ -130,7 +132,12 @@ def synthetic_pair(
     rate_after: float = RATE_AFTER,
     seed: int = SEED,
 ) -> SyntheticPair:
-    """Build the pair by reading the reference at the positions the answer implies."""
+    """Build the pair by reading the reference at the positions the answer implies.
+
+    Built once per set of arguments and process, and handed out read-only: the
+    warp is the expensive part, several modules ask for the same pair, and an
+    array nobody can write to is one no test can change under another.
+    """
     reference = programme(duration_s, sr, seed)
     out_length = int(
         (head_lag_s + step_at_s + (duration_s - step_at_s - step_drop_s) / rate_after) * sr
@@ -140,9 +147,12 @@ def synthetic_pair(
     after = (step_at_s + step_drop_s + (u - head_lag_s - step_at_s) * rate_after) * sr
     # Before the head silence ends, positions are negative and read as silence.
     positions = np.where(u < head_lag_s + step_at_s, before, after)
+    other = warp(reference, positions)
+    reference.setflags(write=False)
+    other.setflags(write=False)
     return SyntheticPair(
         reference=reference,
-        other=warp(reference, positions),
+        other=other,
         sr=sr,
         head_lag_s=head_lag_s,
         step_at_s=step_at_s,
