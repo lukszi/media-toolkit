@@ -53,6 +53,20 @@ day the work was done.
   the last-played dates it cannot clear. It is a `mkvkit.steps` plan: dry
   run, audit, resume.
 
+- **`rename`.** Rename videos or folders as one audited plan: one pair, or a
+  tab-separated mapping of many. Every target is predicted with the naming
+  port and checked against what was intended, for path length with the
+  preview tiles, and for collisions on disk, among the targets and in one
+  season and episode slot; any mismatch refuses the plan. Sidecars move with
+  their video and a stale `.nfo` is parked outside the library. Watched
+  state is snapshot for the whole series first. The renames are
+  `mkvkit.steps` actions, and chains and cycles go through temporary names;
+  the run is audited and resumable. Only the deepest changed folders are
+  notified: a library root, and an unknown folder below one, are refused.
+  The run then waits, bounded, for the new items, replays the watched state
+  (clearing rows inherited by slot) and verifies the end state. It is a dry
+  run unless `--apply --work DIR`.
+
 - **`delete` proves the kept copy plays.** Before a twin, a superseded copy
   or a rebuild's donor is parked, the payload of the copy that is kept is
   read with `mkvkit integrity` -- sampled, listed and, by default, decoded

@@ -491,6 +491,73 @@ and exits 1 if a row still differs. A snapshot is refused rather than written
 with a hole in it. Anybody watching during the rename is overwritten by the
 replay: wait for idle first.
 
+## `jfkit.rename` -- rename videos as one audited plan
+
+One old-to-new pair, or a tab-separated mapping of many, with folders
+allowed, becomes one plan. The plan predicts every target with the naming
+port, carries the sidecars and parks each stale `.nfo`. It then snapshots
+every user's watched state, renames, notifies the deepest changed folders and
+waits for the new items. Last, it replays the watched state onto the new
+identifiers and verifies the end state. `docs/runbooks/rename.md` is the
+whole procedure.
+
+```
+jfkit rename OLD NEW [--expect SPEC]
+jfkit rename --map FILE|-                 # old, new[, intention] per line
+    [--park DIR] [--nfo stale|park|carry]
+    [--root PATH]... [--parent ID]... [--files-only] [--allow-library-scan]
+    [--refresh none|items|series] [--wait-timeout S] [--poll S]
+    [--idle-timeout S] [--attempts N] [--jobs N]
+    [--plan-out PATH] [--work DIR] [--dry-run|--apply]
+```
+
+| Switch | What it does |
+|---|---|
+| `--expect SPEC` | what one target should be read as: `S01E03`, `E03`, `S01E03-E04`, `extra`, `extra:TYPE`, `none` or `movie`. In a mapping this is the third column. Default: inferred from the new name. |
+| `--map FILE` | many renames; `-` reads standard input |
+| `--park DIR` | where stale `.nfo` files go, outside every library. Default: `[paths] parked`/`rename`. |
+| `--nfo` | `stale` (the default) parks the document when the reading changes; `park` parks it always, `carry` never |
+| `--root PATH` | a library root besides the server's and the configuration's |
+| `--parent ID` | the series the items are in, instead of searching for it |
+| `--files-only` | no server: predict, carry, park and rename only |
+| `--allow-library-scan` | notify a root, or an unknown folder below one, anyway |
+| `--refresh` | a non-replacing refresh of each new item, or of their series, once they are there |
+| `--wait-timeout`, `--poll` | how long to wait for the new items (600 s) and how often to look (10 s) |
+| `--idle-timeout` | how long to wait for playback to stop (0: refuse at once) |
+| `--attempts N` | tries per file step when access is refused (3) |
+| `--work DIR` | required with `--apply`: `rename.json`, `snapshot.json`, `plan.json`, `audit.jsonl`, `ids.json`, `report.txt`. The same folder again resumes. |
+| `--plan-out PATH` | save the dry run's plan |
+
+Exit status:
+
+- 0 when the dry run refused nothing, or when the run was applied and
+  verified;
+- 1 when the plan is refused, a step failed, the server did not catch up or
+  the end state differs;
+- 2 for a usage error.
+
+**Refused, with every reason printed at once:**
+
+- a target read differently from its intention;
+- a near-miss extras folder;
+- a path over 259 characters with the preview tiles the server writes
+  beside it;
+- a collision with an existing file, among the targets, or in one season and
+  episode slot;
+- a file the new name would adopt as a sidecar;
+- a notification that would validate a whole library.
+
+**Chains and cycles.** They go through temporary names derived from the
+mapping, so a resumed run finds the files where the first one left them.
+
+**The library side:**
+
+- `plan_files(pairs, Options(park=, nfo=, roots=, allow_library_scan=))
+  -> FilePlan`, which only reads the disk;
+- `server.prepare`, `server.wait_for`, `server.id_map` and
+  `server.verify_end` for the server's part;
+- `read_mapping`, `parse_expect` and `infer_expect` for the input.
+
 ---
 
 ## What is not here
