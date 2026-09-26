@@ -200,7 +200,11 @@ jfkit refresh 00000000-0000-0000-0000-000000000001 --expect Overview --apply
 
 A refresh is a request, not an event: the call returns immediately and the
 work is queued. Reading the record once afterwards and believing it is how a
-whole batch comes back green and wrong.
+whole batch comes back green and wrong. So a field named with `--expect` is
+waited for: the refresh counts as done when that field moves or when the
+record's own refresh marker (`DateLastRefreshed`, `Etag`) does, and a field
+that is still what it was is printed as `expected field NAME: unchanged` and
+exits non-zero.
 
 Two guards live here and both cost real time to learn:
 

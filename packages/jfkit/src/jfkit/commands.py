@@ -198,7 +198,8 @@ def _register_refresh(subparsers: argparse._SubParsersAction) -> None:  # type: 
     )
     parser.add_argument("item_ids", nargs="+", metavar="ID")
     parser.add_argument("--expect", action="append", default=[], metavar="FIELD",
-                        help="a field this refresh is supposed to change")
+                        help="a field this refresh is supposed to change; one that "
+                             "did not change is reported and exits non-zero")
     parser.add_argument("--timeout", type=float, default=300.0, metavar="SECONDS")
     parser.add_argument("--poll", type=float, default=10.0, metavar="SECONDS")
     add_write_arguments(parser)
@@ -211,6 +212,7 @@ def _refresh(args: argparse.Namespace, config: Config) -> int:
     for item_id in args.item_ids:
         report = refresh_module.safe_refresh(
             client, item_id, expected_changes=args.expect,
+            require_changes=args.expect,
             timeout_s=args.timeout, poll_s=args.poll,
         )
         print(report)

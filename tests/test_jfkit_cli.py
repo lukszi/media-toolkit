@@ -306,6 +306,17 @@ def test_a_refresh_that_changes_only_what_was_expected_exits_zero(
                "--apply", "--poll", "0") == 0
 
 
+def test_a_refresh_whose_expected_field_did_not_change_exits_non_zero(
+    configured: Path, server: tuple[str, Recorder],
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    _url, recorder = server
+    recorder.refresh_effect[FIRST] = {"DateLastRefreshed": "2026-01-02T03:04:05Z"}
+    assert run(configured, "refresh", FIRST, "--expect", "ParentIndexNumber",
+               "--apply", "--poll", "0") == 1
+    assert "expected field ParentIndexNumber: unchanged" in capsys.readouterr().out
+
+
 def test_notifying_a_library_root_is_refused_with_an_exit_code(
     configured: Path, server: tuple[str, Recorder],
     capsys: pytest.CaptureFixture[str]

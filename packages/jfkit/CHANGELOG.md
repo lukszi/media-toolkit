@@ -107,6 +107,14 @@ day the work was done.
   every library's folders from the server first, as `delete` already did,
   and sends nothing when they cannot be read. `refresh.library_roots()` is
   new.
+- **`refresh --expect FIELD` says when FIELD did not change.** It was only
+  an allowance: an expected field that stayed as it was went unreported, and
+  with no settle condition the first read -- usually the record from before
+  the refresh -- was the answer. A field named with `--expect` is now waited
+  for until it moves or the record's refresh marker (`DateLastRefreshed`,
+  `Etag`) does; one that did not move is reported with the value it kept and
+  the command exits 1. `safe_refresh(require_changes=...)` is the library
+  side.
 - **`item show --save` keeps stdout for the record.** The "written to" line
   went to stdout ahead of the JSON, so a pipe into a JSON reader failed on
   its first line. It goes to stderr now.

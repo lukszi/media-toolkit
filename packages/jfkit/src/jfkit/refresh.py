@@ -38,6 +38,7 @@ root.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -51,6 +52,7 @@ from .dto import Comparison, compare, fetch, update_item
 __all__ = [
     "DATE_FIELDS",
     "NOTIFY_KINDS",
+    "REFRESH_MARKERS",
     "NotifyRefused",
     "RefreshReport",
     "apply_identity",
@@ -72,6 +74,12 @@ NOTIFY_KINDS = frozenset({"Created", "Modified", "Deleted"})
 #: Sidecar extensions a local metadata reader will fill an empty field from.
 SIDECAR_SUFFIXES: tuple[str, ...] = (".nfo",)
 
+#: Fields a record carries that move whenever the server has refreshed it,
+#: whatever else did. A change in one of them is the evidence that the queue
+#: got to the item; without it, "nothing changed" cannot be told apart from
+#: "nothing has run yet".
+REFRESH_MARKERS: tuple[str, ...] = ("DateLastRefreshed", "Etag")
+
 
 class NotifyRefused(ValueError):
     """A path notification was not sent, because sending it starts a full scan."""
@@ -88,17 +96,27 @@ class RefreshReport:
     waited_s: float
     comparison: Comparison | None = None
     notes: tuple[str, ...] = ()
+    #: fields the refresh was required to change that it did not, with the
+    #: value they kept
+    unchanged: tuple[tuple[str, Any], ...] = ()
 
     @property
     def ok(self) -> bool:
-        """Settled in time, and nothing outside the expected changes moved."""
-        return self.settled and (self.comparison is None or self.comparison.ok)
+        """Settled in time, every required change happened, nothing else moved."""
+        return (
+            self.settled and not self.unchanged
+            and (self.comparison is None or self.comparison.ok)
+        )
 
     def __str__(self) -> str:
         state = "settled" if self.settled else "did not settle"
         lines = [
             f"{self.item_id}: {state} after {self.waited_s:.0f}s "
             f"({self.polls} poll(s))"
+        ]
+        lines += [
+            f"  expected field {name}: unchanged ({json.dumps(value)})"
+            for name, value in self.unchanged
         ]
         if self.comparison is not None:
             lines += ["  " + line for line in str(self.comparison).splitlines()[1:]]
@@ -146,6 +164,7 @@ def safe_refresh(
     item_id: str,
     *,
     expected_changes: Iterable[str] = (),
+    require_changes: Iterable[str] = (),
     until: Callable[[Mapping[str, Any]], bool] | None = None,
     metadata: str = "FullRefresh",
     timeout_s: float = 300.0,
@@ -164,9 +183,19 @@ def safe_refresh(
     Everything outside ``expected_changes`` is compared and reported. A
     refresh that quietly rewrites a name somebody fixed by hand is the reason
     this function exists, and it is common enough to have its own test.
+
+    ``require_changes`` names fields the refresh is *for*: each one that has
+    not moved when it settles is reported with the value it kept, and the
+    report is not ok. With required fields and no ``until``, the refresh is
+    taken to have run when one of them moved or when the record's own
+    refresh marker (:data:`REFRESH_MARKERS`) did -- never on the first read,
+    which is usually the record from before.
     """
     rest = sleep or time.sleep
     snapshot = dict(before) if before is not None else fetch(client, item_id)
+    required = tuple(require_changes)
+    if until is None and required:
+        until = _moved_since(snapshot, required)
     request_refresh(client, item_id, metadata=metadata)
     if client.dry_run:
         return RefreshReport(
@@ -197,15 +226,44 @@ def safe_refresh(
             f"the queue had not caught up after {waited:.0f}s; the comparison below "
             "is against a record that may still be the old one"
         )
+    unchanged = tuple(
+        (name, _field(current, name)) for name in required
+        if _field(current, name) == _field(snapshot, name)
+    )
     return RefreshReport(
         item_id=item_id,
         requested=True,
         settled=settled,
         polls=polls,
         waited_s=waited,
-        comparison=compare(snapshot, current, expected=expected_changes),
+        comparison=compare(
+            snapshot, current, expected=(*expected_changes, *required)
+        ),
         notes=tuple(notes),
+        unchanged=unchanged,
     )
+
+
+def _field(record: Mapping[str, Any], name: str) -> Any:
+    """A top-level field, or a nested one spelled ``UserData.Played``."""
+    value: Any = record
+    for part in name.split("."):
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(part)
+    return value
+
+
+def _moved_since(
+    snapshot: Mapping[str, Any], fields: Sequence[str]
+) -> Callable[[Mapping[str, Any]], bool]:
+    """The default settle condition when a refresh is required to change fields."""
+    def moved(item: Mapping[str, Any]) -> bool:
+        return any(
+            _field(item, name) != _field(snapshot, name)
+            for name in (*fields, *REFRESH_MARKERS)
+        )
+    return moved
 
 
 # ----------------------------------------------------------------- the nudge

@@ -143,6 +143,53 @@ def test_an_expected_change_does_not_count_as_drift(
     assert "nothing else moved" in str(report)
 
 
+def test_a_required_change_is_waited_for_and_not_taken_from_the_first_read(
+    server: tuple[str, Recorder]
+) -> None:
+    """The first reads are the old record; the refresh is over when it says so."""
+    url, recorder = server
+    client = client_for(url, dry_run=False)
+    recorder.stale_reads[FIRST] = 2
+    recorder.refresh_effect[FIRST] = {"ParentIndexNumber": 1}
+    report = safe_refresh(
+        client, FIRST, require_changes=["ParentIndexNumber"],
+        poll_s=0.0, timeout_s=30.0, sleep=no_sleep,
+    )
+    assert report.settled and report.polls == 3
+    assert report.unchanged == ()
+    assert report.ok
+
+
+def test_a_required_change_that_did_not_happen_is_reported_not_passed(
+    server: tuple[str, Recorder]
+) -> None:
+    """The refresh ran -- its marker moved -- and the field kept its value."""
+    url, recorder = server
+    client = client_for(url, dry_run=False)
+    recorder.stale_reads[FIRST] = 2
+    recorder.refresh_effect[FIRST] = {"DateLastRefreshed": "2026-01-02T03:04:05Z"}
+    report = safe_refresh(
+        client, FIRST, require_changes=["ParentIndexNumber"],
+        poll_s=0.0, timeout_s=30.0, sleep=no_sleep,
+    )
+    assert report.settled and report.polls == 3
+    assert report.unchanged == (("ParentIndexNumber", None),)
+    assert not report.ok
+    assert "expected field ParentIndexNumber: unchanged (null)" in str(report)
+
+
+def test_a_required_change_with_no_sign_of_a_refresh_does_not_settle(
+    server: tuple[str, Recorder]
+) -> None:
+    url, _ = server
+    report = safe_refresh(
+        client_for(url, dry_run=False), FIRST, require_changes=["ParentIndexNumber"],
+        poll_s=0.0, timeout_s=0.0, sleep=no_sleep,
+    )
+    assert not report.settled and not report.ok
+    assert "unchanged" in str(report)
+
+
 # -------------------------------------------------------------- the nudge
 def test_a_path_notification_names_the_file(server: tuple[str, Recorder]) -> None:
     url, recorder = server
