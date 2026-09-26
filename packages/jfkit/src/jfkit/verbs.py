@@ -264,10 +264,17 @@ def _register_dedupe(subparsers: argparse._SubParsersAction) -> None:  # type: i
     register(subparsers)
 
 
+def _register_rename(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    from .rename.verb import register
+
+    register(subparsers)
+
+
 REGISTRARS = {
     "dedupe": _register_dedupe,
     "find": _register_find,
     "children": _register_children,
     "playstate": _register_playstate,
     "userdata": _register_userdata,
+    "rename": _register_rename,
 }
