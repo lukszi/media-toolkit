@@ -144,7 +144,7 @@ RULES: tuple[Rule, ...] = (
     _rule(
         "host.url",
         r'''(?i)\b[a-z][a-z0-9+.\-]*:'''
-        r'''//(?:[^\s/@'"`<>]*@)?+(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)|(?:[a-z0-9-]+\.)*(?:github\.com|polyformproject\.org|ffmpeg\.org|mkvtoolnix\.download|jellyfin\.org|python\.org|pypi\.org))(?![a-z0-9.\-]))[^\s/:?#'"`<>)\]]+''',
+        r'''//(?:[^\s/@'"`<>]*@)?+(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)|(?:[a-z0-9-]+\.)*(?:github\.com|polyformproject\.org|ffmpeg\.org|mkvtoolnix\.download|jellyfin\.org|python\.org|pypi\.org)|img\.shields\.io|www\.w3\.org)(?![a-z0-9.\-]))[^\s/:?#'"`<>)\]]+''',
         "a URL whose host is not loopback, an example name or a public project host",
     ),
     _rule(
@@ -154,7 +154,7 @@ RULES: tuple[Rule, ...] = (
     ),
     _rule(
         "host.domain",
-        r'''(?<![\w.@/-])(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)|(?:[a-z0-9-]+\.)*(?:github\.com|polyformproject\.org|ffmpeg\.org|mkvtoolnix\.download|jellyfin\.org|python\.org|pypi\.org))(?![a-z0-9.\-]))(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|de|io|eu|dev|app|me|info|biz|at|ch|nl|uk|fr|it|es|pl|se|dk|fi|cz|be|xyz|cloud|online|site|tv|co)\b(?![\w(\-])''',
+        r'''(?<![\w.@/-])(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)|(?:[a-z0-9-]+\.)*(?:github\.com|polyformproject\.org|ffmpeg\.org|mkvtoolnix\.download|jellyfin\.org|python\.org|pypi\.org)|img\.shields\.io|www\.w3\.org)(?![a-z0-9.\-]))(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|de|io|eu|dev|app|me|info|biz|at|ch|nl|uk|fr|it|es|pl|se|dk|fi|cz|be|xyz|cloud|online|site|tv|co)\b(?![\w(\-])''',
         "a bare domain name that is not an example or a public project host",
     ),
     _rule(

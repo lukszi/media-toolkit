@@ -116,6 +116,23 @@ def test_loopback_examples_and_project_hosts_are_not_host_names() -> None:
         assert scan_text(line + "\n", "clean", exemptions=()) == [], line
 
 
+def test_the_badge_service_and_the_svg_namespace_are_allowed_by_exact_name() -> None:
+    scheme = "https" + "://"
+    for line in (
+        scheme + "img" + ".shields" + ".io/badge/python-3.11-blue",
+        '<svg xmlns="http' + "://www" + ".w3" + '.org/2000/svg">',
+        "badges come from img" + ".shields" + ".io",
+    ):
+        assert scan_text(line + "\n", "clean", exemptions=()) == [], line
+    for line in (
+        scheme + "cdn.img" + ".shields" + ".io/x",
+        scheme + "lists.w3" + ".org/x",
+        scheme + "img" + ".shields" + ".io.home-net" + ".io/x",
+    ):
+        found = {f.rule for f in scan_text(line + "\n", "planted", exemptions=())}
+        assert "host.url" in found, line
+
+
 # ------------------------------------------------------------ identities
 def test_only_the_published_identity_passes_the_header_check() -> None:
     name, mail = PUBLISHED_IDENTITY
