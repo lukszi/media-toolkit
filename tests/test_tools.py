@@ -67,12 +67,22 @@ def test_the_path_is_searched(tmp_path: Path) -> None:
     assert found == stand_in.resolve()
 
 
-def test_a_missing_program_names_everywhere_it_looked(tmp_path: Path) -> None:
+def test_a_missing_program_names_everywhere_it_looked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The platform fallback is pointed at an empty directory of the test's
+    # own, on both platforms, not at the runner's /usr/bin or Program Files:
+    # a CI image that has the program installed would otherwise answer.
+    root = tmp_path / "root"
+    fallback = root / "MKVToolNix"
+    fallback.mkdir(parents=True)
+    monkeypatch.setattr("mkvkit.tools._POSIX_DIRS", (str(fallback),))
+    environ = {"PATH": str(tmp_path / "empty"), "LOCALAPPDATA": str(root)}
     with pytest.raises(ToolNotFound) as caught:
-        find_tool("mkvpropedit", environ={"PATH": str(tmp_path / "empty")})
+        find_tool("mkvpropedit", environ=environ)
     error = caught.value
     assert error.tool == "mkvpropedit"
-    assert "PATH" in error.tried
+    assert error.tried == ("PATH", str(fallback))
     message = str(error)
     assert "[tools].mkvpropedit" in message
     assert f"{ENV_PREFIX}MKVPROPEDIT" in message
