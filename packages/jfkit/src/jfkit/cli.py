@@ -34,8 +34,10 @@ REGISTRY: dict[str, SubCommand] = {}
 
 
 def _register_own() -> None:
+    from .verbs import REGISTRARS as READ_VERBS
+
     REGISTRY.setdefault("naming", _register_naming)
-    for name, register in REGISTRARS.items():
+    for name, register in {**REGISTRARS, **READ_VERBS}.items():
         REGISTRY.setdefault(name, register)
 
 

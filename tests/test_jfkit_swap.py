@@ -318,7 +318,8 @@ def test_play_state_is_put_back_where_it_did_not_survive(
     kept = {"PlayCount": 3, "PlaybackPositionTicks": 42, "Played": False}
     restored = replay_play_state(client, FIRST, {SECOND_USER_ID: kept})
     assert restored == [SECOND_USER_ID]
-    assert recorder.user_data[(SECOND_USER_ID, FIRST)] == kept
+    stored = recorder.user_data[(SECOND_USER_ID, FIRST)]
+    assert {key: stored[key] for key in kept} == kept
 
 
 def test_play_state_that_survived_is_left_alone(

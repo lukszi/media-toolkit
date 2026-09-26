@@ -147,6 +147,14 @@ class Recorder:
     items: list[dict[str, Any]] = field(default_factory=lambda: copy.deepcopy(ITEMS))
     #: play state per user, over and above what each record carries
     user_data: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    #: item id -> the extras the special-features route answers with
+    special_features: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: every user-data body that was sent, as (user, item, body)
+    user_data_writes: list[tuple[str, str, dict[str, Any]]] = field(default_factory=list)
+    #: item ids whose user-data writes are refused, to interrupt a replay
+    user_data_refused: set[str] = field(default_factory=set)
+    #: every collection query, as (user, lower-cased parameters)
+    queries: list[tuple[str, dict[str, str]]] = field(default_factory=list)
     #: what the plugin list answers with, and each plugin's configuration
     installed_plugins: list[dict[str, Any]] = field(default_factory=list)
     plugin_configuration: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -265,8 +273,22 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send(200, {"ok": True, "calls": self.recorder.flaky_calls})
             return
-        if route == f"/Users/{USER_ID}/Items":
-            self._send(200, self._page(self.recorder.items, query))
+        if route.startswith("/Users/") and route.endswith("/Items") \
+                and route.count("/") == 3:
+            user = route.split("/")[2]
+            if not any(row.get("Id") == user for row in self.recorder.users):
+                self._send(404, {"error": "no such user"})
+                return
+            self._send(200, self._page(self._query(user, query), query))
+            return
+        if route.startswith("/Items/") and route.endswith("/SpecialFeatures"):
+            item_id = route.split("/")[2]
+            special_user = query.get("userId", [None])[0]
+            if special_user is None:
+                self._send(400, {"error": "this route needs a user"})
+                return
+            self._send(200, [self._with_user_data(row, special_user) for row in
+                             self.recorder.special_features.get(item_id, [])])
             return
         if route == "/Items":
             # answers, and quietly leaves items out: the failure worth testing
@@ -324,8 +346,19 @@ class _Handler(BaseHTTPRequestHandler):
         if route.startswith("/UserItems/") and route.endswith("/UserData"):
             item_id = route.split("/")[2]
             user = parse_qs(parsed.query).get("userId", [USER_ID])[0]
-            self.recorder.user_data[(user, item_id)] = dict(body or {})
-            self._send(200, body)
+            if item_id in self.recorder.user_data_refused:
+                self._send(500, {"error": "the write was refused"})
+                return
+            key = (user, item_id)
+            found = self.recorder.find(item_id)
+            base = self.recorder.user_data.get(key) or dict(
+                (found or {}).get("UserData") or {})
+            # a field that is absent or null is left as it was, which is why a
+            # last-played date can be set this way but never cleared
+            base.update({k: v for k, v in (body or {}).items() if v is not None})
+            self.recorder.user_data[key] = base
+            self.recorder.user_data_writes.append((user, item_id, dict(body or {})))
+            self._send(200, base)
             return
         if route.startswith("/Items/") and route.count("/") == 2:
             self._update_item(route.rsplit("/", 1)[-1], body or {})
@@ -443,17 +476,106 @@ class _Handler(BaseHTTPRequestHandler):
                 self.recorder.stale_reads[item_id] = remaining - 1
             else:
                 found.update(self.recorder.refresh_effect.pop(item_id))
-        payload = copy.deepcopy(found)
-        override = self.recorder.user_data.get((user, item_id))
+        self._send(200, self._with_user_data(found, user))
+
+    def _with_user_data(self, row: dict[str, Any], user: str) -> dict[str, Any]:
+        payload = copy.deepcopy(row)
+        override = self.recorder.user_data.get((user, str(row.get("Id"))))
         if override is not None:
             payload["UserData"] = dict(override)
-        self._send(200, payload)
+        return payload
+
+    def _query(self, user: str, query: dict[str, list[str]]) -> list[dict[str, Any]]:
+        """The collection route's filters, as far as the library uses them.
+
+        Parameter names are matched without regard to case, as the real
+        server does. Without a parent the query covers everything, which is
+        what a recursive query from the top answers with.
+        """
+        lowered = {key.lower(): values[0] for key, values in query.items() if values}
+        rows = list(self.recorder.items)
+        if "ids" in lowered:
+            wanted = lowered["ids"].split(",")
+            rows = [row for row in rows if row["Id"] in wanted]
+        if "parentid" in lowered:
+            parent = lowered["parentid"]
+            recursive = lowered.get("recursive", "false").lower() == "true"
+            rows = [row for row in rows if self._under(row, parent, recursive)]
+        if "includeitemtypes" in lowered:
+            kinds = lowered["includeitemtypes"].split(",")
+            rows = [row for row in rows if row.get("Type") in kinds]
+        if "searchterm" in lowered:
+            term = lowered["searchterm"].casefold()
+            rows = [row for row in rows if term in str(row.get("Name", "")).casefold()]
+        self.recorder.queries.append((user, dict(lowered)))
+        return [self._with_user_data(row, user) for row in rows]
+
+    def _under(self, row: dict[str, Any], parent: str, recursive: bool) -> bool:
+        seen = 0
+        here = row.get("ParentId")
+        while here is not None and seen < 32:
+            if here == parent:
+                return True
+            if not recursive:
+                return False
+            found = self.recorder.find(here)
+            here = None if found is None else found.get("ParentId")
+            seen += 1
+        return False
 
     @staticmethod
     def _page(rows: list[dict[str, Any]], query: dict[str, list[str]]) -> dict[str, Any]:
         start = int(query.get("startIndex", ["0"])[0])
         limit = int(query.get("limit", ["500"])[0])
         return {"Items": rows[start:start + limit], "TotalRecordCount": len(rows)}
+
+
+def _unplayed() -> dict[str, Any]:
+    return {"PlayCount": 0, "PlaybackPositionTicks": 0, "Played": False,
+            "IsFavorite": False}
+
+
+def series_tree(
+    series: str, seasons: dict[int, int], *, first: int = 100,
+    root: str = "/srv/media/series",
+) -> list[dict[str, Any]]:
+    """A series row, its season rows and their episode rows, linked by parent.
+
+    Identifiers count up from ``first`` in the all-zero fixture shape. The
+    episodes carry the fields a slot is made of -- series, season number,
+    episode number -- and each has a path in its season folder.
+    """
+    def ident(n: int) -> str:
+        return f"00000000-0000-0000-0000-{n:012d}"
+
+    number = first
+    series_id = ident(number)
+    rows: list[dict[str, Any]] = [{
+        "Id": series_id, "Name": series, "Type": "Series", "ParentId": None,
+        "Path": f"{root}/{series}", "ProviderIds": {"Tvdb": str(number)},
+        "UserData": _unplayed(),
+    }]
+    for season, episodes in sorted(seasons.items()):
+        number += 1
+        season_id = ident(number)
+        folder = f"{root}/{series}/Season {season:02d}"
+        rows.append({
+            "Id": season_id, "Name": f"Season {season}", "Type": "Season",
+            "ParentId": series_id, "SeriesId": series_id, "IndexNumber": season,
+            "Path": folder, "UserData": _unplayed(),
+        })
+        for episode in range(1, episodes + 1):
+            number += 1
+            rows.append({
+                "Id": ident(number), "Name": f"Episode {episode}", "Type": "Episode",
+                "ParentId": season_id, "SeasonId": season_id, "SeriesId": series_id,
+                "SeriesName": series, "ParentIndexNumber": season,
+                "IndexNumber": episode,
+                "Path": f"{folder}/{series} - S{season:02d}E{episode:02d}.mkv",
+                "ProviderIds": {"Tvdb": str(10_000 + number)},
+                "UserData": _unplayed(),
+            })
+    return rows
 
 
 class PurePathLike:

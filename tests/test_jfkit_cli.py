@@ -21,6 +21,7 @@ import pytest
 from jfkit import cli as jfkit_cli
 from jfkit import client as jfkit_client
 from jfkit.commands import REGISTRARS, _fields_from
+from jfkit.verbs import REGISTRARS as READ_VERBS
 
 from tests.fake_server import (
     CREDENTIAL_VARIABLE,
@@ -70,7 +71,7 @@ def test_every_verb_is_registered() -> None:
     parser = jfkit_cli.build_parser()
     action = next(a for a in parser._actions if a.dest == "command")
     assert action.choices is not None
-    assert set(action.choices) == {"naming", *REGISTRARS}
+    assert set(action.choices) == {"naming", *REGISTRARS, *READ_VERBS}
 
 
 def _writing_parsers(parser: argparse.ArgumentParser, prefix: str = "") -> list[str]:

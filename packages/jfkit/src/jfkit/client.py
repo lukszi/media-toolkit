@@ -270,6 +270,7 @@ class Client:
         *,
         user_scoped: bool = True,
         page_size: int = 500,
+        user: str | None = None,
         **params: Any,
     ) -> Iterator[dict[str, Any]]:
         """Every item matching the query, page by page.
@@ -281,8 +282,13 @@ class Client:
         ``user_scoped`` defaults to true. The unscoped route returns a short
         answer instead of an error, which makes it the most dangerous default
         available: an audit built on it under-reports and says nothing.
+
+        ``user`` asks as somebody other than the configured user, which is how
+        one user's play state is read; it is still a user-scoped query.
         """
-        route = f"/Users/{self._require_user()}/Items" if user_scoped else "/Items"
+        route = (
+            f"/Users/{user or self._require_user()}/Items" if user_scoped else "/Items"
+        )
         if not user_scoped:
             log.warning(
                 "querying %s without a user: this route is known to omit items on "
