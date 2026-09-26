@@ -137,10 +137,51 @@ with the longest file the server will write beside it (the preview tiles are
 the deepest) and marked `LONG` above 259 characters, the classic Windows
 limit. `naming`, `notify` and `refresh` take `-` (one entry per line on
 standard input) and `@FILE` for lists too long for a command line, and
-`--full-paths` prints each path as given. It is pinned by a
-table of sixty-five invented names and records the release it was read
-against, because a regex port of somebody else's parser with no fixtures will
-eventually be confidently wrong.
+`--full-paths` prints each path as given.
+
+It is a whole port, not a selection: all twenty-six episode expressions of
+12.1 in upstream order, with their flags; the ten multi-episode expressions;
+the path parser around them (first match wins, seasons from 200 to 1927 and
+above 2500 rejected, an end number only when it is not smaller than the
+episode and is not the start of a resolution); the resolver's guards (only a
+video suffix or a `.disc` placeholder is an episode; anything the extras rules
+claim is an extra); the thirty-five extras rules; and the season-folder
+parser. Each expression cites the upstream file and line it was read from, and
+`PARSED_AGAINST` names the release and the commit. A partial port was
+confidently wrong in exactly the ways that cost a rename: it called
+`E16.Title.mkv` unparsed (the server reads episode 16), missed that
+`Name-8000 Title.mp4` is season 80 episode 00 and `Name-8.000 Title.mp4`
+season 0 episode 0, and read a file in `Featurettes/` as an episode.
+
+What each line says:
+
+- `RANGE` -- the name produces an episode range, and the exit status is 1.
+- `EXTRA` -- a file the extras rules claim: `extra (featurette), not an
+  episode`. Only the folder the file sits in counts, and the names are exact
+  (`trailers`, `backdrops`, `behind the scenes`, `deleted scenes`,
+  `interviews`, `scenes`, `samples`, `shorts`, `featurettes`, `extras`,
+  `extra`, `other`, `clips`), as are the endings (`-trailer`, `.sample`,
+  `-featurette`, ...).
+- `WARN` -- the folder is one or two letters away from an extras folder name
+  (`Feaaturettes`), so its files are episodes; this is a warning of this tool,
+  not upstream behaviour.
+- A note names the season a season folder supplies when the name carries none
+  (`season_from_folder`), and which kind of expression claimed the name
+  (`Rule`: season-episode, episode, absolute, cross, optimistic, part, pair,
+  season-folder, by-date).
+
+`--absolute-order` leaves out the optimistic expression, as the server does
+for a series shown in absolute order. The library API is `parse(path)` for the
+verdict, and `episode_path`, `extra_type`, `season_folder`,
+`near_miss_extra_folder` and `longest_derived_path` for the pieces.
+
+It is pinned three ways: a table of invented names that states the behaviours
+a rename depends on, a table of every upstream episode, season-folder and
+extras test case translated to the invented cast (each row cites its upstream
+test), and a test that every expression is present in order. Two expressions
+are written differently from upstream where Python's regular expression engine
+would backtrack exponentially on deep paths; the rewrites match the same names
+and find the same first match, and the module says where.
 
 ## `jfkit.surveys` -- six questions, one shape
 

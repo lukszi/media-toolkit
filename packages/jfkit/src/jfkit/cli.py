@@ -18,14 +18,21 @@ from __future__ import annotations
 import argparse
 import logging
 from collections.abc import Sequence
-from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 from mkvkit.cli import SubCommand, add_common_arguments, run
 
 from . import __version__
 from .commands import LIST_HELP, REGISTRARS, expand_lists
 from .config import Config
-from .naming import PARSED_AGAINST, VIDEO_SUFFIXES, Rule, parse
+from .naming import (
+    MAX_PATH,
+    PARSED_AGAINST,
+    VIDEO_SUFFIXES,
+    Rule,
+    longest_derived_path,
+    parse,
+)
 
 __all__ = ["REGISTRY", "build_parser", "main"]
 
@@ -52,15 +59,23 @@ def _register_naming(
             "exit status: 0 when no name would be read as an episode range; "
             "1 when at least one would (a double episode named on purpose "
             "exits 1 too -- read the RANGE lines); 2 for a usage error. A name "
-            "no expression claims, and a path too long for the classic "
-            "Windows limit, are reported and do not change the exit status."
+            "no expression claims, a file the extras rules make an extra "
+            "(EXTRA), a folder name one or two letters away from an extras "
+            "folder (WARN), and a path too long for the classic Windows limit "
+            "are reported and do not change the exit status."
         ),
     )
     naming.add_argument("paths", nargs="+", metavar="PATH",
                         help="files, or folders to walk" + LIST_HELP)
     naming.add_argument(
         "--only-problems", action="store_true",
-        help="print only the names that would be read as a range or not at all",
+        help="print only the names that would be read as a range, not at all, "
+             "as an extra, or that carry a warning or a long path",
+    )
+    naming.add_argument(
+        "--absolute-order", action="store_true",
+        help="the series is shown in absolute order, which leaves the optimistic "
+             "digit-run expression out, as the server does",
     )
     naming.add_argument(
         "--full-paths", action="store_true",
@@ -70,25 +85,9 @@ def _register_naming(
     naming.set_defaults(handler=_naming)
 
 
-#: The classic Windows path limit, less the terminating character. A path
-#: longer than this is a problem for every tool that has not opted out of it.
-MAX_PATH = 259
-
-#: What the server writes beside a video, relative to its path without the
-#: extension. The trickplay tiles are the deepest: a folder, a resolution
-#: folder, and a numbered picture.
-SIDECAR_TAILS: tuple[str, ...] = (
-    ".nfo", "-thumb.jpg", ".trickplay/320 - 10x10/000.jpg",
-)
-
-
 def _longest_with_sidecars(path: str) -> int:
     """The length of the longest path the server will derive from this one."""
-    windows = "\\" in path or (len(path) > 1 and path[1] == ":")
-    pure: PurePath = PureWindowsPath(path) if windows else PurePosixPath(path)
-    stem = str(pure.with_suffix("")) if pure.suffix else str(pure)
-    tails = [tail.replace("/", "\\") if windows else tail for tail in SIDECAR_TAILS]
-    return max(len(path), *(len(stem) + len(tail) for tail in tails))
+    return longest_derived_path(path)
 
 
 def _expand(values: Sequence[str]) -> list[str | Path]:
@@ -112,20 +111,25 @@ def _naming(args: argparse.Namespace, _config: Config) -> int:
     The exit code is the point: this is meant to be run in a pipeline before a
     rename, where "it printed something" is not a signal and an exit code is.
     """
-    results = [parse(path) for path in _expand(args.paths)]
+    absolute = getattr(args, "absolute_order", False)
+    results = [parse(path, absolute_order=absolute) for path in _expand(args.paths)]
     shown = 0
     too_long = 0
     for result in results:
         longest = _longest_with_sidecars(result.path)
         long_path = longest > MAX_PATH
         too_long += long_path
-        problem = result.would_get_end or result.rule is Rule.NONE or long_path
+        problem = (result.would_get_end or result.rule is Rule.NONE or result.is_extra
+                   or bool(result.warnings) or long_path)
         if args.only_problems and not problem:
             continue
         shown += 1
-        flag = "RANGE " if result.would_get_end else "      "
+        flag = ("RANGE " if result.would_get_end else "EXTRA " if result.is_extra
+                else "WARN  " if result.warnings else "      ")
         shown_as = result.path if args.full_paths else Path(result.path).name
         print(f"{flag}{result.describe()}  {shown_as}")
+        for warning in result.warnings:
+            print(f"        warning: {warning}")
         for note in result.notes:
             print(f"        note: {note}")
         if long_path:
@@ -136,10 +140,12 @@ def _naming(args: argparse.Namespace, _config: Config) -> int:
             )
     ranged = sum(1 for result in results if result.would_get_end)
     unread = sum(1 for result in results if result.rule is Rule.NONE)
+    extras = sum(1 for result in results if result.is_extra)
+    warned = sum(1 for result in results if result.warnings)
     print(
         f"\n{len(results)} path(s), {shown} shown, {ranged} would be read as a "
-        f"range, {unread} claimed by no expression, {too_long} too long with "
-        f"their sidecars.\nChecked against "
+        f"range, {unread} claimed by no expression, {extras} extra(s), {warned} "
+        f"with a warning, {too_long} too long with their sidecars.\nChecked against "
         f"{PARSED_AGAINST}; see docs/gotchas/jellyfin-12.md."
     )
     return 1 if ranged else 0

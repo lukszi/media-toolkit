@@ -1,0 +1,96 @@
+# tests/fixtures/naming_seasons.tsv -- upstream's season-folder tests, translated.
+#
+# Every row is one case from tests/Jellyfin.Naming.Tests/TV/SeasonPathParserTests.cs
+# (Jellyfin 12.1, ee91c75e77), cited by line. Show and film titles are
+# replaced by the invented cast and its word lists, keeping every digit,
+# separator and season keyword where upstream put it; the keyword rows are
+# upstream's own words.
+#
+# Columns:
+#   source    upstream test file and line
+#   mode      "tv": special aliases and numeric folders on, as the season
+#             resolver calls it; "mixed": both off, as for a mixed library
+#   path, parent: the folder and the folder above it
+#   season    the season it names, empty for none
+#   folder    whether upstream calls it a season folder
+#
+source	mode	path	parent	season	folder
+SeasonPathParserTests.cs:9	tv	/Drive/Season 1	/Drive	1	yes
+SeasonPathParserTests.cs:10	tv	/Drive/SEASON 1	/Drive	1	yes
+SeasonPathParserTests.cs:11	tv	/Drive/Staffel 1	/Drive	1	yes
+SeasonPathParserTests.cs:12	tv	/Drive/STAFFEL 1	/Drive	1	yes
+SeasonPathParserTests.cs:13	tv	/Drive/Stagione 1	/Drive	1	yes
+SeasonPathParserTests.cs:14	tv	/Drive/STAGIONE 1	/Drive	1	yes
+SeasonPathParserTests.cs:15	tv	/Drive/sæson 1	/Drive	1	yes
+SeasonPathParserTests.cs:16	tv	/Drive/SÆSON 1	/Drive	1	yes
+SeasonPathParserTests.cs:17	tv	/Drive/Temporada 1	/Drive	1	yes
+SeasonPathParserTests.cs:18	tv	/Drive/TEMPORADA 1	/Drive	1	yes
+SeasonPathParserTests.cs:19	tv	/Drive/series 1	/Drive	1	yes
+SeasonPathParserTests.cs:20	tv	/Drive/SERIES 1	/Drive	1	yes
+SeasonPathParserTests.cs:21	tv	/Drive/Kausi 1	/Drive	1	yes
+SeasonPathParserTests.cs:22	tv	/Drive/KAUSI 1	/Drive	1	yes
+SeasonPathParserTests.cs:23	tv	/Drive/Säsong 1	/Drive	1	yes
+SeasonPathParserTests.cs:24	tv	/Drive/SÄSONG 1	/Drive	1	yes
+SeasonPathParserTests.cs:25	tv	/Drive/Seizoen 1	/Drive	1	yes
+SeasonPathParserTests.cs:26	tv	/Drive/SEIZOEN 1	/Drive	1	yes
+SeasonPathParserTests.cs:27	tv	/Drive/Seasong 1	/Drive	1	yes
+SeasonPathParserTests.cs:28	tv	/Drive/SEASONG 1	/Drive	1	yes
+SeasonPathParserTests.cs:29	tv	/Drive/Sezon 1	/Drive	1	yes
+SeasonPathParserTests.cs:30	tv	/Drive/SEZON 1	/Drive	1	yes
+SeasonPathParserTests.cs:31	tv	/Drive/sezona 1	/Drive	1	yes
+SeasonPathParserTests.cs:32	tv	/Drive/SEZONA 1	/Drive	1	yes
+SeasonPathParserTests.cs:33	tv	/Drive/sezóna 1	/Drive	1	yes
+SeasonPathParserTests.cs:34	tv	/Drive/SEZÓNA 1	/Drive	1	yes
+SeasonPathParserTests.cs:35	tv	/Drive/Sezonul 1	/Drive	1	yes
+SeasonPathParserTests.cs:36	tv	/Drive/SEZONUL 1	/Drive	1	yes
+SeasonPathParserTests.cs:37	tv	/Drive/시즌 1	/Drive	1	yes
+SeasonPathParserTests.cs:38	tv	/Drive/シーズン 1	/Drive	1	yes
+SeasonPathParserTests.cs:39	tv	/Drive/сезон 1	/Drive	1	yes
+SeasonPathParserTests.cs:40	tv	/Drive/Сезон 1	/Drive	1	yes
+SeasonPathParserTests.cs:41	tv	/Drive/СЕЗОН 1	/Drive	1	yes
+SeasonPathParserTests.cs:42	tv	/Drive/Season 10	/Drive	10	yes
+SeasonPathParserTests.cs:43	tv	/Drive/Season 100	/Drive	100	yes
+SeasonPathParserTests.cs:44	tv	/Drive/s1	/Drive	1	yes
+SeasonPathParserTests.cs:45	tv	/Drive/S1	/Drive	1	yes
+SeasonPathParserTests.cs:46	tv	/Drive/Season 2	/Drive	2	yes
+SeasonPathParserTests.cs:47	tv	/Drive/Season 02	/Drive	2	yes
+SeasonPathParserTests.cs:48	tv	/Drive/Northwind/S02	/Northwind	2	yes
+SeasonPathParserTests.cs:49	tv	/Drive/Northwind/2	/Northwind	2	yes
+SeasonPathParserTests.cs:50	tv	/Drive/Northwind Season 2	/Drive		no
+SeasonPathParserTests.cs:51	tv	/Drive/Season 2009	/Drive	2009	yes
+SeasonPathParserTests.cs:52	tv	/Drive/Season1	/Drive	1	yes
+SeasonPathParserTests.cs:53	tv	The Longest Night/The.Longest.Night.S04.PDTV.x264-EXAMPLE	/The Longest Night	4	yes
+SeasonPathParserTests.cs:54	tv	/Drive/Season 7 (2016)	/Drive	7	yes
+SeasonPathParserTests.cs:55	tv	/Drive/Staffel 7 (2016)	/Drive	7	yes
+SeasonPathParserTests.cs:56	tv	/Drive/Stagione 7 (2016)	/Drive	7	yes
+SeasonPathParserTests.cs:57	tv	/Drive/Signal Hill SG-1/Season 1	/Drive/Signal Hill SG-1	1	yes
+SeasonPathParserTests.cs:58	tv	/Drive/Signal Hill SG-1/Signal Hill SG-1 Season 1	/Drive/Signal Hill SG-1	1	yes
+SeasonPathParserTests.cs:59	tv	/Drive/Season (8)	/Drive		no
+SeasonPathParserTests.cs:60	tv	/Drive/3.Staffel	/Drive	3	yes
+SeasonPathParserTests.cs:61	tv	/Drive/s06e05	/Drive		no
+SeasonPathParserTests.cs:62	tv	/Drive/The.Golden.Ledger.2017.V2.web.1080p.opus-example	/Drive		no
+SeasonPathParserTests.cs:63	tv	/Drive/extras	/Drive	0	yes
+SeasonPathParserTests.cs:64	tv	/Drive/EXTRAS	/Drive	0	yes
+SeasonPathParserTests.cs:65	tv	/Drive/specials	/Drive	0	yes
+SeasonPathParserTests.cs:66	tv	/Drive/SPECIALS	/Drive	0	yes
+SeasonPathParserTests.cs:67	tv	/Drive/Episode 1 Season 2	/Drive		no
+SeasonPathParserTests.cs:68	tv	/Drive/Episode 1 SEASON 2	/Drive		no
+SeasonPathParserTests.cs:69	tv	/media/Videos/Falling Quarry/2024-01-24 4070 Ti SUPER in under 7 minutes	/media/Videos/Falling Quarry		no
+SeasonPathParserTests.cs:70	tv	/media/Videos/Falling Quarry/2025-01-28 5090 vs 2 SFF Cases	/media/Videos/Falling Quarry		no
+SeasonPathParserTests.cs:71	tv	/Drive/202401244070	/Drive		no
+SeasonPathParserTests.cs:72	tv	/Drive/Drive.S01.2160p.WEB.DDP5.1.H.265-XXXX	/Drive	1	yes
+SeasonPathParserTests.cs:73	tv	The Longest Night/The.Longest.Night.S04.1080p.PDTV.x264-EXAMPLE	/The Longest Night	4	yes
+SeasonPathParserTests.cs:74	tv	The Longest Night/[The.Longest.Night.S04.1080p.PDTV.x264-EXAMPLE]	/The Longest Night	4	yes
+SeasonPathParserTests.cs:75	tv	The Longest Night/The.Longest.Night [S04][1080p.PDTV.x264-EXAMPLE]	/The Longest Night	4	yes
+SeasonPathParserTests.cs:76	tv	The Longest Night/The Longest Night Season 01 1080p	/The Longest Night	1	yes
+SeasonPathParserTests.cs:88	mixed	/Drive/300 Harbours Collection/300 Harbours (2006)	/Drive/300 Harbours Collection		no
+SeasonPathParserTests.cs:89	mixed	/Drive/300 Harbours Collection/300 Harbours Rise of a Canyon	/Drive/300 Harbours Collection		no
+SeasonPathParserTests.cs:90	mixed	/Drive/300 Harbours Collection/1	/Drive/300 Harbours Collection		no
+SeasonPathParserTests.cs:91	mixed	/Drive/300 Harbours Collection/300 Harbours Disc 1	/Drive/300 Harbours Collection		no
+SeasonPathParserTests.cs:92	mixed	/Drive/28 Quiet Canyons Collection/28 Quiet Anchors	/Drive/28 Quiet Canyons Collection		no
+SeasonPathParserTests.cs:93	mixed	/Drive/28 Quiet Canyons Collection/28 Quiet Ledgers (2007)	/Drive/28 Quiet Canyons Collection		no
+SeasonPathParserTests.cs:94	mixed	/Drive/28 Quiet Canyons Collection/28 Quiet Canyons 2025	/Drive/28 Quiet Canyons Collection		no
+SeasonPathParserTests.cs:95	mixed	/Drive/300 Harbours Collection/Season 1	/Drive/300 Harbours Collection	1	yes
+SeasonPathParserTests.cs:96	mixed	/Drive/28 Quiet Canyons Collection/Season 01	/Drive/28 Quiet Canyons Collection	1	yes
+SeasonPathParserTests.cs:97	mixed	/Drive/300 Harbours Collection/S01	/Drive/300 Harbours Collection	1	yes
+SeasonPathParserTests.cs:98	mixed	/Drive/300 Harbours Collection/S1	/Drive/300 Harbours Collection	1	yes

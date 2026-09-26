@@ -349,6 +349,11 @@ interviews, scenes, samples, shorts, featurettes, extras, extra, other,
 clips). Anything else is a season.
 
 **Fix.** Rename the directory to one of the recognised names.
+Only the folder a file sits in *directly* counts, the comparison ignores case
+and nothing else, and a name one letter off (`Featurete`) is an ordinary
+folder whose files are read as episodes -- one of which then takes an episode
+slot. `jfkit naming` reports a file in a recognised folder as `EXTRA` and one
+in a near-miss as `WARN`, naming the folder it was probably meant to be.
 
 **Confirmed.** Each differently-named bonus folder became a fake season.
 
@@ -379,6 +384,32 @@ uses another. Folder notifications and default refreshes are no-ops for it.
 
 **Confirmed.** Reproduced; a restart resolved it immediately. **This looks
 like a bug worth reporting upstream.**
+
+### 3.12 A name that looks unparsed is usually parsed -- by one of twenty-six expressions
+
+**Symptom.** A file named without a season-and-episode marker gets episode
+numbers anyway, and not the ones anybody expected: `E16.Title.mkv` is episode
+16, `Name-8000 Title.mp4` is season 80 episode 00, and the "obvious" fix
+`Name-8.000 Title.mp4` is season 0 episode 0 -- a special.
+
+**Cause.** The episode parser tries twenty-six expressions in a fixed order
+and the first match wins. Besides the marker forms there is a Kodi `foo.E01.`
+expression, an `ep01` one, an `NxNN` one, an "optimistic" one that reads the
+last two digits of any run of three or more after a separator as the episode
+and the rest as the season, a `part 2` one, and an unanchored `1-12` one that
+reads season 1, episode 12 out of any two hyphenated numbers. Every one is
+compiled case-insensitively, so the guard that stops the absolute expression
+at an `x` stops it at an `X` too. Seasons from 200 to 1927 and above 2500 are
+thrown away, which is the only thing that keeps long numeric broadcast ids
+from becoming seasons.
+
+**Fix.** Give every episode an `SxxEyy` marker: the first expression claims
+it and nothing further down is consulted. Check a planned name with
+`jfkit naming` before renaming; it runs the whole list in upstream order and
+says which kind of expression claimed each name.
+
+**Confirmed.** Read from the 12.1 naming code and its own test suite; the
+three examples above were each observed on a server before the port existed.
 
 ---
 

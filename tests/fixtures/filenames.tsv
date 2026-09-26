@@ -5,15 +5,23 @@
 # those expressions change -- and a parser that is confidently wrong renames
 # files into the wrong episodes. Every row here is an invented name.
 #
-# Checked against: Jellyfin 12.1, September 2026.
+# Checked against: Jellyfin 12.1 (Emby.Naming at ee91c75e77), September 2026.
 #
 # Columns: path, season, episode, end, rule, multi
 #   an empty cell means the server produces no number at all
-#   rule "reconstructed" marks a shape the ported expressions do not claim and
-#     whose numbers are inferred from the multi-episode expressions instead
+#   rule is the kind of expression that claimed the name (jfkit.naming.Rule):
+#     "cross" is an NxNN form, "pair" the unanchored "1-12" expression, which
+#     reads the first number as the season, "episode" a number with no season
 #   rule "by-date" marks a name whose numbers are re-derived on every refresh
 #   "multi" says whether one of the ten multi-episode expressions attached the
 #     end number, which happens whatever claimed the name first
+#
+# Revised for the full port of the 26 expressions: sixteen rows changed. The
+# NxNN rows are claimed by upstream's own expression ("cross", not the old
+# "reconstructed"); names the partial port called unclaimed are read by the
+# "1-12" pair, "Episode N" and "01 - title" expressions; and the expressions
+# are case-insensitive upstream, so an upper-case X in a codec token stops the
+# absolute expression exactly as a lower-case one does.
 #
 path	season	episode	end	rule	multi
 /srv/media/series/Northwind/Season 01/Northwind - S01E03 - The Quiet Harbour.mkv	1	3		season-episode	no
@@ -35,12 +43,12 @@ Northwind - S01E03.mkv	1	3		season-episode	no
 /srv/media/series/Northwind/Season 01/Northwind.S01E03-E04.mkv	1	3	4	season-episode	yes
 /srv/media/series/Northwind/Season 01/Northwind.S01E03-04.mkv	1	3	4	season-episode	yes
 /srv/media/series/Northwind/Season 01/Northwind S01 E03-04 - Two Parts.mkv	1	3		season-episode	no
-/srv/media/series/Northwind/Season 01/Northwind 1x03-1x04.mkv	1	3	4	reconstructed	yes
-/srv/media/series/Northwind/Season 01/Northwind 1x03-04.mkv	1	3	4	reconstructed	yes
-/srv/media/series/Northwind/Season 01/Northwind 1x03x04.mkv	1	3	4	reconstructed	yes
-/srv/media/series/Northwind/Season 06/Northwind 6x01-6x02 Storm.mkv	6	1	2	reconstructed	yes
-/srv/media/series/Northwind/Season 01/Northwind 1x03 - 04 - Two Parts.mkv	1	3		reconstructed	no
-/srv/media/series/Northwind/Season 01/Northwind 1x03.mkv	1	3		reconstructed	no
+/srv/media/series/Northwind/Season 01/Northwind 1x03-1x04.mkv	1	3	4	cross	yes
+/srv/media/series/Northwind/Season 01/Northwind 1x03-04.mkv	1	3	4	cross	yes
+/srv/media/series/Northwind/Season 01/Northwind 1x03x04.mkv	1	3	4	cross	yes
+/srv/media/series/Northwind/Season 06/Northwind 6x01-6x02 Storm.mkv	6	1	2	cross	yes
+/srv/media/series/Northwind/Season 01/Northwind 1x03 - 04 - Two Parts.mkv	1	3		cross	no
+/srv/media/series/Northwind/Season 01/Northwind 1x03.mkv	1	3		cross	no
 /srv/media/series/Northwind/Season 01/Northwind.S01E03E04 x264.mkv	1	3	4	season-episode	yes
 /srv/media/series/Harbour Lights/Harbour Lights 1-05 Pilot.avi		1	5	absolute	no
 /srv/media/series/Harbour Lights/Harbour Lights 12-345 Something.avi		12	345	absolute	no
@@ -50,15 +58,15 @@ Northwind - S01E03.mkv	1	3		season-episode	no
 /srv/media/series/Harbour Lights/Harbour Lights 05.mkv		5		absolute	no
 /srv/media/series/Harbour Lights/Harbour Lights 100 The Long One.avi		100		absolute	no
 /srv/media/series/Harbour Lights/Harbour Lights 1985 The Year.avi		1985		absolute	no
-/srv/media/series/Harbour Lights/Harbour.Lights.1-05.Pilot.avi				none	no
-/srv/media/series/Harbour Lights/Harbour_Lights_1-05 Pilot.avi				none	no
-/srv/media/series/Harbour Lights/Harbour Lights - 1-05 - Pilot.avi				none	no
-/srv/media/series/Harbour Lights/Harbour Lights (2001) 1-05 Pilot.avi				none	no
-/srv/media/series/Harbour Lights/Episode 1-05 Pilot.avi				none	no
+/srv/media/series/Harbour Lights/Harbour.Lights.1-05.Pilot.avi	1	5		pair	no
+/srv/media/series/Harbour Lights/Harbour_Lights_1-05 Pilot.avi	1	5		pair	no
+/srv/media/series/Harbour Lights/Harbour Lights - 1-05 - Pilot.avi	1	5	5	pair	no
+/srv/media/series/Harbour Lights/Harbour Lights (2001) 1-05 Pilot.avi	1	5		pair	no
+/srv/media/series/Harbour Lights/Episode 1-05 Pilot.avi		1	5	episode	no
 /srv/media/series/Harbour Lights/Folge 04.mkv		4		absolute	no
 /srv/media/series/Harbour Lights/Part 1-05 Pilot.avi		1	5	absolute	no
-/srv/media/series/Harbour Lights/Harbour Lights 1-05 Pilot x264.avi				none	no
-/srv/media/series/Harbour Lights/Harbour Lights 1-05 Pilot X264.avi		1	5	absolute	no
+/srv/media/series/Harbour Lights/Harbour Lights 1-05 Pilot x264.avi	1	5		pair	no
+/srv/media/series/Harbour Lights/Harbour Lights 1-05 Pilot X264.avi	1	5		pair	no
 /srv/media/series/Harbour Lights/Harbour Lights S01E05 - Pilot - 1-05.mkv	1	5		season-episode	no
 /srv/media/series/Harbour Lights/Season S01E09/Harbour Lights 1-05 Pilot.avi		1	5	absolute	no
 /srv/media/series/Signal Hill/Signal Hill (2009-04-02).mp4				by-date	no
@@ -66,8 +74,8 @@ Northwind - S01E03.mkv	1	3		season-episode	no
 /srv/media/series/Signal Hill/Signal Hill [2009.04.02] Extra.mkv				by-date	no
 /srv/media/series/Signal Hill/001 - 2001-09-26 - Signal Hill S01 E01-02 - Pilot.mkv	1	1		season-episode	no
 /srv/media/series/The Longest Night/Season 01/The Longest Night.mkv				none	no
-/srv/media/series/The Longest Night/S01/05 - The Quiet One.mkv				none	no
-/srv/media/series/The Longest Night/01 - The First Year/05 - The Quiet One.mkv				none	no
+/srv/media/series/The Longest Night/S01/05 - The Quiet One.mkv		5		absolute	no
+/srv/media/series/The Longest Night/01 - The First Year/05 - The Quiet One.mkv		5		absolute	no
 /srv/media/series/The Longest Night/Season 01/The Longest Night - S01E05.mkv	1	5		season-episode	no
 /srv/media/movies/The Quiet Harbour (1978)/The Quiet Harbour (1978).mkv				none	no
 Northwind.S01E03.1080p.WEB-DL.x264-EXAMPLE.mkv	1	3		season-episode	no
@@ -76,7 +84,7 @@ Northwind.S01E03.1080p.WEB-DL.x264-EXAMPLE.mkv	1	3		season-episode	no
 /srv/media/series\Northwind\Season 02/Northwind - S02E11.mkv	2	11		season-episode	no
 /srv/media/series/Northwind/Season 01/Northwind - S01E03 - A Title With S02E09 In It.mkv	1	3		season-episode	no
 /srv/media/series/Hollowmere/Hollowmere 2-14 The Ferry.avi		2	14	absolute	no
-/srv/media/series/Hollowmere/Hollowmere 2-14 The Ferry X265.avi		2	14	absolute	no
+/srv/media/series/Hollowmere/Hollowmere 2-14 The Ferry X265.avi	2	14		pair	no
 /srv/media/series/Hollowmere/Season 02/Hollowmere - S02E14 - The Ferry.avi	2	14		season-episode	no
 /srv/media/series/Signal Hill/Signal Hill - S01E02 - 2009-04-02.mkv	1	2		season-episode	no
 /srv/media/series/Amberlight/Amberlight.S03E07.EXAMPLE.mkv	3	7		season-episode	no

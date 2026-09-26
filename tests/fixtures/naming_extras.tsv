@@ -1,0 +1,124 @@
+# tests/fixtures/naming_extras.tsv -- upstream's extras tests, translated.
+#
+# Every row is one case from tests/Jellyfin.Naming.Tests/Video/ExtraTests.cs
+# (Jellyfin 12.1, ee91c75e77), cited by line; a theory's rows carry the line
+# of the InlineData that fed them. Upstream's film title is replaced by one
+# from the invented cast; the words that are the point -- trailer, sample,
+# the folder names -- are upstream's own.
+#
+# Columns:
+#   source    upstream test file and line
+#   root      the library root, where the test passes one
+#   path      the file
+#   extra     the upstream extra type, empty for "not an extra"
+#
+source	root	path	extra
+ExtraTests.cs:22		trailer.mp4	Trailer
+ExtraTests.cs:23		Blue Canyon-trailer.mp4	Trailer
+ExtraTests.cs:24		Blue Canyon.trailer.mp4	Trailer
+ExtraTests.cs:25		Blue Canyon_trailer.mp4	Trailer
+ExtraTests.cs:26		Blue Canyon - trailer.mp4	Trailer
+ExtraTests.cs:28		theme.mp3	ThemeSong
+ExtraTests.cs:35		trailer.mp3
+ExtraTests.cs:37		stuff trailerthings.mkv
+ExtraTests.cs:40		theme.mkv
+ExtraTests.cs:42		Blue Canyon-scene.mp4	Scene
+ExtraTests.cs:43		Blue Canyon-scene2.mp4	Scene
+ExtraTests.cs:44		Blue Canyon-clip.mp4	Clip
+ExtraTests.cs:46		Blue Canyon-deleted.mp4	DeletedScene
+ExtraTests.cs:47		Blue Canyon-deletedscene.mp4	DeletedScene
+ExtraTests.cs:48		Blue Canyon-interview.mp4	Interview
+ExtraTests.cs:49		Blue Canyon-behindthescenes.mp4	BehindTheScenes
+ExtraTests.cs:50		Blue Canyon-featurette.mp4	Featurette
+ExtraTests.cs:51		Blue Canyon-short.mp4	Short
+ExtraTests.cs:52		Blue Canyon-extra.mp4	Unknown
+ExtraTests.cs:53		Blue Canyon-other.mp4	Unknown
+ExtraTests.cs:57		theme-music/Blue Canyon.mp3	ThemeSong
+ExtraTests.cs:57		Blue Canyon/theme-music/something.mp3	ThemeSong
+ExtraTests.cs:57		/data/something/Movies/Blue Canyon/theme-music/whoknows.mp3	ThemeSong
+ExtraTests.cs:66		behind the scenes/Blue Canyon.mp4	BehindTheScenes
+ExtraTests.cs:66		Blue Canyon/behind the scenes/something.mkv	BehindTheScenes
+ExtraTests.cs:66		/data/something/Movies/Blue Canyon/behind the scenes/whoknows.mp4	BehindTheScenes
+ExtraTests.cs:67		deleted scenes/Blue Canyon.mp4	DeletedScene
+ExtraTests.cs:67		Blue Canyon/deleted scenes/something.mkv	DeletedScene
+ExtraTests.cs:67		/data/something/Movies/Blue Canyon/deleted scenes/whoknows.mp4	DeletedScene
+ExtraTests.cs:68		interviews/Blue Canyon.mp4	Interview
+ExtraTests.cs:68		Blue Canyon/interviews/something.mkv	Interview
+ExtraTests.cs:68		/data/something/Movies/Blue Canyon/interviews/whoknows.mp4	Interview
+ExtraTests.cs:69		scenes/Blue Canyon.mp4	Scene
+ExtraTests.cs:69		Blue Canyon/scenes/something.mkv	Scene
+ExtraTests.cs:69		/data/something/Movies/Blue Canyon/scenes/whoknows.mp4	Scene
+ExtraTests.cs:70		samples/Blue Canyon.mp4	Sample
+ExtraTests.cs:70		Blue Canyon/samples/something.mkv	Sample
+ExtraTests.cs:70		/data/something/Movies/Blue Canyon/samples/whoknows.mp4	Sample
+ExtraTests.cs:71		shorts/Blue Canyon.mp4	Short
+ExtraTests.cs:71		Blue Canyon/shorts/something.mkv	Short
+ExtraTests.cs:71		/data/something/Movies/Blue Canyon/shorts/whoknows.mp4	Short
+ExtraTests.cs:72		trailers/Blue Canyon.mp4	Trailer
+ExtraTests.cs:72		Blue Canyon/trailers/something.mkv	Trailer
+ExtraTests.cs:72		/data/something/Movies/Blue Canyon/trailers/whoknows.mp4	Trailer
+ExtraTests.cs:73		featurettes/Blue Canyon.mp4	Featurette
+ExtraTests.cs:73		Blue Canyon/featurettes/something.mkv	Featurette
+ExtraTests.cs:73		/data/something/Movies/Blue Canyon/featurettes/whoknows.mp4	Featurette
+ExtraTests.cs:74		clips/Blue Canyon.mp4	Clip
+ExtraTests.cs:74		Blue Canyon/clips/something.mkv	Clip
+ExtraTests.cs:74		/data/something/Movies/Blue Canyon/clips/whoknows.mp4	Clip
+ExtraTests.cs:75		backdrops/Blue Canyon.mp4	ThemeVideo
+ExtraTests.cs:75		Blue Canyon/backdrops/something.mkv	ThemeVideo
+ExtraTests.cs:75		/data/something/Movies/Blue Canyon/backdrops/whoknows.mp4	ThemeVideo
+ExtraTests.cs:76		extra/Blue Canyon.mp4	Unknown
+ExtraTests.cs:76		Blue Canyon/extra/something.mkv	Unknown
+ExtraTests.cs:76		/data/something/Movies/Blue Canyon/extra/whoknows.mp4	Unknown
+ExtraTests.cs:77		extras/Blue Canyon.mp4	Unknown
+ExtraTests.cs:77		Blue Canyon/extras/something.mkv	Unknown
+ExtraTests.cs:77		/data/something/Movies/Blue Canyon/extras/whoknows.mp4	Unknown
+ExtraTests.cs:78		other/Blue Canyon.mp4	Unknown
+ExtraTests.cs:78		Blue Canyon/other/something.mkv	Unknown
+ExtraTests.cs:78		/data/something/Movies/Blue Canyon/other/whoknows.mp4	Unknown
+ExtraTests.cs:87		gibberish/Blue Canyon.mp4
+ExtraTests.cs:87		Blue Canyon/gibberish/something.mkv
+ExtraTests.cs:87		/data/something/Movies/Blue Canyon/gibberish/whoknows.mp4
+ExtraTests.cs:87		/data/something/Movies/gibberish/gibberish.mp4
+ExtraTests.cs:88		not a scene/Blue Canyon.mp4
+ExtraTests.cs:88		Blue Canyon/not a scene/something.mkv
+ExtraTests.cs:88		/data/something/Movies/Blue Canyon/not a scene/whoknows.mp4
+ExtraTests.cs:88		/data/something/Movies/not a scene/not a scene.mp4
+ExtraTests.cs:89		The Quiet Short/Blue Canyon.mp4
+ExtraTests.cs:89		Blue Canyon/The Quiet Short/something.mkv
+ExtraTests.cs:89		/data/something/Movies/Blue Canyon/The Quiet Short/whoknows.mp4
+ExtraTests.cs:89		/data/something/Movies/The Quiet Short/The Quiet Short.mp4
+ExtraTests.cs:99	/data/something/theme-music	/data/something/theme-music/Blue Canyon.mp3
+ExtraTests.cs:99	/data/something/theme-music	/data/something/theme-music/Blue Canyon/theme-music/something.mp3	ThemeSong
+ExtraTests.cs:108	/data/something/trailers	/data/something/trailers/Blue Canyon.mp4
+ExtraTests.cs:108	/data/something/trailers	/data/something/trailers/Blue Canyon/trailers/something.mkv	Trailer
+ExtraTests.cs:109	/data/something/backdrops	/data/something/backdrops/Blue Canyon.mp4
+ExtraTests.cs:109	/data/something/backdrops	/data/something/backdrops/Blue Canyon/backdrops/something.mkv	ThemeVideo
+ExtraTests.cs:110	/data/something/behind the scenes	/data/something/behind the scenes/Blue Canyon.mp4
+ExtraTests.cs:110	/data/something/behind the scenes	/data/something/behind the scenes/Blue Canyon/behind the scenes/something.mkv	BehindTheScenes
+ExtraTests.cs:111	/data/something/deleted scenes	/data/something/deleted scenes/Blue Canyon.mp4
+ExtraTests.cs:111	/data/something/deleted scenes	/data/something/deleted scenes/Blue Canyon/deleted scenes/something.mkv	DeletedScene
+ExtraTests.cs:112	/data/something/interviews	/data/something/interviews/Blue Canyon.mp4
+ExtraTests.cs:112	/data/something/interviews	/data/something/interviews/Blue Canyon/interviews/something.mkv	Interview
+ExtraTests.cs:113	/data/something/scenes	/data/something/scenes/Blue Canyon.mp4
+ExtraTests.cs:113	/data/something/scenes	/data/something/scenes/Blue Canyon/scenes/something.mkv	Scene
+ExtraTests.cs:114	/data/something/samples	/data/something/samples/Blue Canyon.mp4
+ExtraTests.cs:114	/data/something/samples	/data/something/samples/Blue Canyon/samples/something.mkv	Sample
+ExtraTests.cs:115	/data/something/shorts	/data/something/shorts/Blue Canyon.mp4
+ExtraTests.cs:115	/data/something/shorts	/data/something/shorts/Blue Canyon/shorts/something.mkv	Short
+ExtraTests.cs:116	/data/something/featurettes	/data/something/featurettes/Blue Canyon.mp4
+ExtraTests.cs:116	/data/something/featurettes	/data/something/featurettes/Blue Canyon/featurettes/something.mkv	Featurette
+ExtraTests.cs:117	/data/something/extras	/data/something/extras/Blue Canyon.mp4
+ExtraTests.cs:117	/data/something/extras	/data/something/extras/Blue Canyon/extras/something.mkv	Unknown
+ExtraTests.cs:118	/data/something/extra	/data/something/extra/Blue Canyon.mp4
+ExtraTests.cs:118	/data/something/extra	/data/something/extra/Blue Canyon/extra/something.mkv	Unknown
+ExtraTests.cs:119	/data/something/other	/data/something/other/Blue Canyon.mp4
+ExtraTests.cs:119	/data/something/other	/data/something/other/Blue Canyon/other/something.mkv	Unknown
+ExtraTests.cs:120	/data/something/clips	/data/something/clips/Blue Canyon.mp4
+ExtraTests.cs:120	/data/something/clips	/data/something/clips/Blue Canyon/clips/something.mkv	Clip
+ExtraTests.cs:131		sample.mp4	Sample
+ExtraTests.cs:132		Blue Canyon-sample.mp4	Sample
+ExtraTests.cs:133		Blue Canyon.sample.mp4	Sample
+ExtraTests.cs:134		Blue Canyon_sample.mp4	Sample
+ExtraTests.cs:135		Blue Canyon - sample.mp4	Sample
+ExtraTests.cs:141		A Quiet Trailer.mp4
+ExtraTests.cs:142		The Golden Sample.mp4

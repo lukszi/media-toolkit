@@ -41,7 +41,8 @@ def test_the_table_is_big_enough_to_be_a_specification() -> None:
     assert len(ROWS) >= 60
     assert {row["rule"] for row in ROWS} >= {
         Rule.SEASON_EPISODE.value, Rule.ABSOLUTE.value,
-        Rule.BY_DATE.value, Rule.RECONSTRUCTED.value, Rule.NONE.value,
+        Rule.BY_DATE.value, Rule.CROSS.value, Rule.PAIR.value, Rule.EPISODE.value,
+        Rule.NONE.value,
     }
 
 
@@ -109,26 +110,38 @@ def test_a_year_in_a_title_is_read_as_an_episode_number() -> None:
 
 
 def test_separators_that_look_the_same_are_not() -> None:
-    """Dots and underscores around the number defeat the absolute expression."""
-    assert parse("/srv/media/series/Coldwater/Coldwater.1-05.Pilot.avi").rule is Rule.NONE
-    assert parse("/srv/media/series/Coldwater/Coldwater_1-05 Pilot.avi").rule is Rule.NONE
+    """Dots and underscores around the number defeat the absolute expression.
+
+    They do not make the name unclaimed: the unanchored ``1-12`` expression
+    further down the list reads the pair as season 1, episode 5 -- a different
+    answer to the same digits, and no range.
+    """
+    for name in ("Coldwater.1-05.Pilot.avi", "Coldwater_1-05 Pilot.avi"):
+        found = parse(f"/srv/media/series/Coldwater/{name}")
+        assert (found.rule, found.season, found.episode, found.end) == (Rule.PAIR, 1, 5, None)
     assert parse("/srv/media/series/Coldwater/Coldwater 1-05 Pilot.avi").end == 5
 
 
-def test_a_lower_case_x_after_the_number_stops_the_absolute_expression() -> None:
+def test_an_x_after_the_number_stops_the_absolute_expression() -> None:
     """One letter of difference, two different parses, in the same directory.
 
-    The expression's tail excludes a lower-case ``x``, so any ordinary word
-    containing one -- a codec token, or the word "extended" -- changes the
-    answer. This is the most surprising behaviour in the set, and the reason a
-    table of names exists at all.
+    The expression's tail excludes an ``x``, and upstream compiles every
+    expression case-insensitively, so any ordinary word containing one -- a
+    codec token, or the word "extended", in either case -- changes the answer
+    from a range to the season-and-episode pair. This is the most surprising
+    behaviour in the set, and the reason a table of names exists at all.
     """
-    assert parse("/srv/media/series/Coldwater/Coldwater 1-05 extended.avi").rule is Rule.NONE
-    assert parse("/srv/media/series/Coldwater/Coldwater 1-05 EXTENDED.avi").end == 5
+    for word in ("extended", "EXTENDED"):
+        found = parse(f"/srv/media/series/Coldwater/Coldwater 1-05 {word}.avi")
+        assert (found.rule, found.season, found.episode, found.end) == (Rule.PAIR, 1, 5, None)
+    assert parse("/srv/media/series/Coldwater/Coldwater 1-05 plain.avi").end == 5
 
 
-def test_a_name_beginning_with_the_word_episode_is_excluded() -> None:
-    assert parse("/srv/media/series/Coldwater/Episode 1-05 Pilot.avi").rule is Rule.NONE
+def test_a_name_beginning_with_the_word_episode_is_left_to_its_own_expression() -> None:
+    """The absolute expression refuses it; the ``Episode N`` expression takes it."""
+    found = parse("/srv/media/series/Coldwater/Episode 1-05 Pilot.avi")
+    assert (found.rule, found.episode, found.end) == (Rule.EPISODE, 1, 5)
+    assert found.expression == 13
     assert parse("/srv/media/series/Coldwater/Folge 04.mkv").episode == 4
 
 

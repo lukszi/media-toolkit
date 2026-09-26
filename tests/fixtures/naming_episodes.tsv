@@ -1,0 +1,269 @@
+# tests/fixtures/naming_episodes.tsv -- upstream's own episode naming tests, translated.
+#
+# Every row is one case from Jellyfin 12.1's naming test suite
+# (tests/Jellyfin.Naming.Tests/TV/*.cs at ee91c75e77), cited by file and
+# line in the first column. The titles are replaced by names from the
+# invented cast (docs/CONVENTIONS.md) -- the upstream suite names real shows --
+# keeping every character the expressions care about: digits, separators,
+# brackets, the letters x, e, s and p, and where each sits. Release tags that
+# only decorate the name are shortened where the privacy gate would read them
+# as a real release; the ones that matter to an expression are kept.
+#
+# Columns:
+#   source    upstream test file and line
+#   call      "parser": EpisodePathParser.Parse (jfkit.naming.episode_path);
+#             "resolve": EpisodeResolver.Resolve (jfkit.naming.parse)
+#   flags     directory (parse as a folder), absolute (absolute display
+#             order), named+optimistic (restrict to those expressions),
+#             windows (the harness writes the path with backslashes behind
+#             a drive letter, as upstream's second block does)
+#   season, episode, end, series, date: what upstream asserts. "*" is a
+#             field that upstream's test does not assert; an empty cell is an
+#             asserted "no value"; episode "unresolved" means the resolver
+#             returns nothing at all, "stub" that it returns a placeholder.
+#
+source	call	flags	path	season	episode	end	series	date
+EpisodePathParserTest.cs:12	parser	directory	/media/Nightjar/Nightjar-S01E01	1	1	*	Nightjar	*
+EpisodePathParserTest.cs:13	parser	directory	/media/Nightjar - S04E011	4	11	*	Nightjar	*
+EpisodePathParserTest.cs:14	parser	directory	/media/Nightjar/Nightjar s01x01	1	1	*	Nightjar	*
+EpisodePathParserTest.cs:15	parser	directory	/media/Nightjar (2019)/Season 4/Nightjar (2019).S04E03	4	3	*	Nightjar (2019)	*
+EpisodePathParserTest.cs:16	parser	directory,windows	/media/Nightjar/Nightjar-S01E01	1	1	*	Nightjar	*
+EpisodePathParserTest.cs:17	parser	directory,windows	/media/Nightjar - S04E011	4	11	*	Nightjar	*
+EpisodePathParserTest.cs:18	parser	directory,windows	/media/Nightjar/Nightjar s01x01	1	1	*	Nightjar	*
+EpisodePathParserTest.cs:19	parser	directory,windows	/media/Nightjar (2019)/Season 4/Nightjar (2019).S04E03	4	3	*	Nightjar (2019)	*
+EpisodePathParserTest.cs:20	parser		/Season 2/Northwind - 02x03-04-15 - Ep Name.mp4	2	3	*	Northwind	*
+EpisodePathParserTest.cs:21	parser		/Season 1/seriesname S01E02 blah.avi	1	2	*	seriesname	*
+EpisodePathParserTest.cs:22	parser		/Signal Hill/Signal Hill S2017E368.mkv	2017	368	*	Signal Hill	*
+EpisodePathParserTest.cs:23	parser		/Season 1/seriesname 01x02 blah.avi	1	2	*	seriesname	*
+EpisodePathParserTest.cs:24	parser		/Season 25/Harbour Lights.S25E09.The Quiet One.mp4	25	9	*	Harbour Lights	*
+EpisodePathParserTest.cs:25	parser		/Season 1/seriesname S01x02 blah.avi	1	2	*	seriesname	*
+EpisodePathParserTest.cs:26	parser		/Season 2/Northwind - 02x03 - 02x04 - 02x15 - Ep Name.mp4	2	3	*	Northwind	*
+EpisodePathParserTest.cs:27	parser		/Season 1/seriesname S01xE02 blah.avi	1	2	*	seriesname	*
+EpisodePathParserTest.cs:28	parser		/Season 02/Northwind - 02x03 - x04 - x15 - Ep Name.mp4	2	3	*	Northwind	*
+EpisodePathParserTest.cs:29	parser		/Season 02/Northwind - 02x03x04x15 - Ep Name.mp4	2	3	*	Northwind	*
+EpisodePathParserTest.cs:30	parser		/Season 02/Northwind - 02x03-E15 - Ep Name.mp4	2	3	*	Northwind	*
+EpisodePathParserTest.cs:31	parser		/Season 1/Northwind - S01E23-E24-E26 - The Anchor.mp4	1	23	*	Northwind	*
+EpisodePathParserTest.cs:32	parser		/The Longest Night/The.Longest.Night.S04.PDTV.x264-EXAMPLE/The Longest Night s04e07 Winter Party NTSC PDTV.avi	4	7	*	The Longest Night	*
+EpisodePathParserTest.cs:33	parser		/Coldwater/Season 3/Coldwater Season 3 Episode 09 - The Golden Ledger.avi	3	9	*	Coldwater	*
+EpisodePathParserTest.cs:52	parser	named,optimistic	/test/01-03.avi	*	1	*	*	*
+EpisodePathParserTest.cs:65	parser		Series Special (1920x1080).mkv	*	unresolved	*	*	*
+EpisodePathParserTest.cs:73	resolve		test.mp3	*	unresolved	*	*	*
+EpisodePathParserTest.cs:80	resolve		dvd.disc	*	stub	*	*	*
+EpisodeNumberTests.cs:12	parser		Season 21/Amberlight 1001	*	1001	*	*	*
+EpisodeNumberTests.cs:13	parser		Amberlight (2019)/Amberlight 1x03 [WEBDL-720p][EAC3 5.1][h264][-EXAMPLE] - A Winter Tide.mkv	*	3	*	*	*
+EpisodeNumberTests.cs:14	parser		Hollowmere/Hollowmere 25x22 - [WEBDL-720p][AAC 2.0][x264] Golden Pilgrim-EXAMPLE.mkv	*	22	*	*	*
+EpisodeNumberTests.cs:15	parser		Nightjar 2x01 Winter Tide [WEB-DL SAMPLE 1080p h264 Dual DD5.1 Subs].mkv	*	1	*	*	*
+EpisodeNumberTests.cs:16	parser		Coldwater 1x06 Episodio 6 [WEB-DL SAMPLE 1080p h264 Dual DD 5.1 Sub].mkv	*	6	*	*	*
+EpisodeNumberTests.cs:17	parser		Season 02/S02E03 blah.avi	*	3	*	*	*
+EpisodeNumberTests.cs:18	parser		Season 2/02x03 - 02x04 - 02x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:19	parser		Season 02/02x03 - x04 - x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:20	parser		Season 1/01x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:21	parser		Season 1/S01x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:22	parser		Season 1/S01E02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:23	parser		Season 2/Northwind - 02x03-04-15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:24	parser		Season 1/S01xE02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:25	parser		Season 1/seriesname S01E02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:26	parser		Season 2/Episode - 16.avi	*	16	*	*	*
+EpisodeNumberTests.cs:27	parser		Season 2/Episode 16.avi	*	16	*	*	*
+EpisodeNumberTests.cs:28	parser		Season 2/Episode 16 - Some Title.avi	*	16	*	*	*
+EpisodeNumberTests.cs:29	parser		Season 2/16 Some Title.avi	*	16	*	*	*
+EpisodeNumberTests.cs:30	parser		Season 2/16 - 12 Some Title.avi	*	16	*	*	*
+EpisodeNumberTests.cs:31	parser		Season 2/7 - 12 Quiet Anchors.avi	*	7	*	*	*
+EpisodeNumberTests.cs:32	parser		Season 1/seriesname 01x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:33	parser		Season 25/Harbour Lights.S25E09.The Quiet One.mp4	*	9	*	*	*
+EpisodeNumberTests.cs:34	parser		Season 1/seriesname S01x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:35	parser		Season 2/Northwind - 02x03 - 02x04 - 02x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:36	parser		Season 1/seriesname S01xE02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:37	parser		Season 02/Northwind - 02x03 - x04 - x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:38	parser		Season 02/Northwind - 02x03x04x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:39	parser		Season 2/02x03-04-15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:40	parser		Season 02/02x03-E15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:41	parser		Season 02/Northwind - 02x03-E15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:42	parser		Season 1/Northwind - S01E23-E24-E26 - The Anchor.mp4	*	23	*	*	*
+EpisodeNumberTests.cs:43	parser		Season 2009/S2009E23-E24-E26 - The Anchor.mp4	*	23	*	*	*
+EpisodeNumberTests.cs:44	parser		Season 2009/2009x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:45	parser		Season 2009/S2009x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:46	parser		Season 2009/S2009E02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:47	parser		Season 2009/seriesname 2009x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:48	parser		Season 2009/Northwind - 2009x03x04x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:49	parser		Season 2009/2009x03x04x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:50	parser		Season 2009/Northwind - 2009x03-E15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:51	parser		Season 2009/S2009xE02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:52	parser		Season 2009/Northwind - S2009E23-E24-E26 - The Anchor.mp4	*	23	*	*	*
+EpisodeNumberTests.cs:53	parser		Season 2009/seriesname S2009xE02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:54	parser		Season 2009/2009x03-E15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:55	parser		Season 2009/seriesname S2009E02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:56	parser		Season 2009/2009x03 - 2009x04 - 2009x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:57	parser		Season 2009/2009x03 - x04 - x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:58	parser		Season 2009/seriesname S2009x02 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:59	parser		Season 2009/Northwind - 2009x03 - 2009x04 - 2009x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:60	parser		Season 2009/Northwind - 2009x03-04-15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:61	parser		Season 2009/2009x03-04-15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:62	parser		Season 2009/Northwind - 2009x03 - x04 - x15 - Ep Name.mp4	*	3	*	*	*
+EpisodeNumberTests.cs:63	parser		Season 1/02 - blah-02 a.avi	*	2	*	*	*
+EpisodeNumberTests.cs:64	parser		Season 1/02 - blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:65	parser		Season 2/02 - blah 14 blah.avi	*	2	*	*	*
+EpisodeNumberTests.cs:66	parser		Season 2/02.avi	*	2	*	*	*
+EpisodeNumberTests.cs:67	parser		Season 2/2. Infestation.avi	*	2	*	*	*
+EpisodeNumberTests.cs:68	parser		The Longest Night/The.Longest.Night.S04.PDTV.x264-EXAMPLE/The Longest Night s04e07 Winter Party NTSC PDTV.avi	*	7	*	*	*
+EpisodeNumberTests.cs:69	parser		Signal Hill/Signal Hill S2017E368.mkv	*	368	*	*	*
+EpisodeNumberTests.cs:70	parser		Season 2/[GROUP] Blue Canyon - 136 [720p].mkv	*	136	*	*	*
+EpisodeNumberTests.cs:71	parser		Signal Hill 2/[GROUP] Signal Hill 2 - 03 [720p].mkv	*	3	*	*	*
+EpisodeNumberTests.cs:72	parser		Season 1/seriesname 05.mkv	*	5	*	*	*
+EpisodeNumberTests.cs:73	parser		[GROUP-RMX] Winter Tide ½ - 154 [50AC421A].mkv	*	154	*	*	*
+EpisodeNumberTests.cs:74	parser		Season 2/Episode 21 - 94 Quarries.mp4	*	21	*	*	*
+EpisodeNumberTests.cs:75	parser		/The.Golden.Ledger.2017.V2.web.1080p.opus-example/The.Golden.Ledger.2017.E07.V2.web.1080p.opus-example.mkv	*	7	*	*	*
+EpisodeNumberTests.cs:76	parser		Season 3/The Series Season 3 Episode 9 - The title.avi	*	9	*	*	*
+EpisodeNumberTests.cs:77	parser		Season 3/The Series S3 E9 - The title.avi	*	9	*	*	*
+EpisodeNumberTests.cs:78	parser		Season 3/S003 E009.avi	*	9	*	*	*
+EpisodeNumberTests.cs:79	parser		Season 3/Season 3 Episode 9.avi	*	9	*	*	*
+EpisodeNumberTests.cs:80	parser		[GROUP-Studio] Hollow Lantern Quarry Pilgrim [21][Ma10p_1080p][x265_flac].mkv	*	21	*	*	*
+EpisodeNumberTests.cs:81	parser		[GROUP&SAMPLE][Falling_Bastion_no_Aviary][04][BDRIP][1920x1080][x264_AAC][7620E503].mp4	*	4	*	*	*
+EpisodeNumberTests.cs:83	parser		Winter Foundry (1996-2007)/Winter Foundry - 317.mkv	*	317	*	*	*
+EpisodeNumberTests.cs:84	parser		Season 2/Blue Canyon - 101.mkv	*	101	*	*	*
+EpisodeNumberTests.cs:85	parser		Season 1/Show Name - 1234 [720p].mkv	*	1234	*	*	*
+SimpleEpisodeTests.cs:13	resolve		/server/anything_s01e02.mp4	1	2		anything	*
+SimpleEpisodeTests.cs:14	resolve		/server/anything_s1e2.mp4	1	2		anything	*
+SimpleEpisodeTests.cs:15	resolve		/server/anything_s01.e02.mp4	1	2		anything	*
+SimpleEpisodeTests.cs:16	resolve		/server/anything_102.mp4	1	2		anything	*
+SimpleEpisodeTests.cs:17	resolve		/server/anything_1x02.mp4	1	2		anything	*
+SimpleEpisodeTests.cs:18	resolve		/server/Hollow Lantern 4x01.mp4	4	1		Hollow Lantern	*
+SimpleEpisodeTests.cs:19	resolve		/server/harbour_lights-s02e01_18536.mp4	2	1		harbour_lights	*
+SimpleEpisodeTests.cs:20	resolve		/server/Temp/S01E02 foo.mp4	1	2			*
+SimpleEpisodeTests.cs:21	resolve		Series/4x12 - The Anchor.mp4	4	12			*
+SimpleEpisodeTests.cs:22	resolve		Series/Northwind X, Pt. 1_s06e32.mp4	6	32		Northwind X, Pt. 1	*
+SimpleEpisodeTests.cs:23	resolve		[Baz-Bar]Nightjar - [1080p][Multiple Subtitle]/[Baz-Bar] Nightjar - 05 [1080p][Multiple Subtitle].mkv		5		Nightjar	*
+SimpleEpisodeTests.cs:24	resolve		/Nightjar/The.Series.Name.S01E04.WEBRip.x264-Baz[Bar]/the.series.name.s01e04.webrip.x264-Baz[Bar].mkv	1	4		The.Series.Name	*
+SimpleEpisodeTests.cs:25	resolve		Hollow.Quarry.and.Aviary.S01.1080p.NF.WEB.DDP5.1.x264-EXAMPLE/Hollow.Quarry.and.Aviary.S01E01.Golden.Edge.1080p.NF.WEB.DDP5.1.x264-EXAMPLE.mkv	1	1		Hollow.Quarry.and.Aviary	*
+SimpleEpisodeTests.cs:26	resolve		[GROUP] Blue Ledger - Falling Anchor Quiet Foundry/[GROUP] Blue Ledger - Falling Anchor Quiet Foundry - 12 (NVENC H.265 1080p).mkv		12		Blue Ledger - Falling Anchor Quiet Foundry	*
+SimpleEpisodeTests.cs:27	resolve		[Baz-Bar]Nightjar - 01 - 12[1080p][Multiple Subtitle]/[Baz-Bar] Nightjar - 05 [1080p][Multiple Subtitle].mkv		5		Nightjar	*
+SimpleEpisodeTests.cs:28	resolve		Series/4-12 - The Anchor.mp4	4	12	12		*
+MultiEpisodeTests.cs:12	parser		Season 1/4x01 – 20 Hours in Coldwater (1).mkv	*	*		*	*
+MultiEpisodeTests.cs:13	parser		Season 1/01x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:14	parser		Season 1/S01x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:15	parser		Season 1/S01E02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:16	parser		Season 1/S01xE02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:17	parser		Season 1/seriesname 01x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:18	parser		Season 1/seriesname S01x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:19	parser		Season 1/seriesname S01E02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:20	parser		Season 1/seriesname S01xE02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:21	parser		Season 2/02x03 - 04 Ep Name.mp4	*	*		*	*
+MultiEpisodeTests.cs:22	parser		Season 2/My show name 02x03 - 04 Ep Name.mp4	*	*		*	*
+MultiEpisodeTests.cs:23	parser		Season 2/Northwind - 02x03 - 02x04 - 02x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:24	parser		Season 2/02x03 - 02x04 - 02x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:25	parser		Season 2/02x03-04-15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:26	parser		Season 2/Northwind - 02x03-04-15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:27	parser		Season 02/02x03-E15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:28	parser		Season 02/Northwind - 02x03-E15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:29	parser		Season 02/02x03 - x04 - x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:30	parser		Season 02/Northwind - 02x03 - x04 - x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:31	parser		Season 02/02x03x04x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:32	parser		Season 02/Northwind - 02x03x04x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:33	parser		Season 1/Northwind - S01E23-E24-E26 - The Anchor.mp4	*	*	26	*	*
+MultiEpisodeTests.cs:34	parser		Season 1/S01E23-E24-E26 - The Anchor.mp4	*	*	26	*	*
+MultiEpisodeTests.cs:36	parser		Season 2009/2009x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:37	parser		Season 2009/S2009x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:38	parser		Season 2009/S2009E02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:39	parser		Season 2009/S2009xE02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:40	parser		Season 2009/seriesname 2009x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:41	parser		Season 2009/seriesname S2009x02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:42	parser		Season 2009/seriesname S2009E02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:43	parser		Season 2009/seriesname S2009xE02 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:44	parser		Season 2009/Northwind - 2009x03 - 2009x04 - 2009x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:45	parser		Season 2009/2009x03 - 2009x04 - 2009x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:46	parser		Season 2009/2009x03-04-15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:47	parser		Season 2009/Northwind - 2009x03-04-15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:48	parser		Season 2009/2009x03-E15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:49	parser		Season 2009/Northwind - 2009x03-E15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:50	parser		Season 2009/2009x03 - x04 - x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:51	parser		Season 2009/Northwind - 2009x03 - x04 - x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:52	parser		Season 2009/2009x03x04x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:53	parser		Season 2009/Northwind - 2009x03x04x15 - Ep Name.mp4	*	*	15	*	*
+MultiEpisodeTests.cs:54	parser		Season 2009/Northwind - S2009E23-E24-E26 - The Anchor.mp4	*	*	26	*	*
+MultiEpisodeTests.cs:55	parser		Season 2009/S2009E23-E24-E26 - The Anchor.mp4	*	*	26	*	*
+MultiEpisodeTests.cs:57	parser		Season 1/02 - blah.avi	*	*		*	*
+MultiEpisodeTests.cs:58	parser		Season 2/02 - blah 14 blah.avi	*	*		*	*
+MultiEpisodeTests.cs:59	parser		Season 1/02 - blah-02 a.avi	*	*		*	*
+MultiEpisodeTests.cs:60	parser		Season 2/02.avi	*	*		*	*
+MultiEpisodeTests.cs:61	parser		Season 1/02-03 - blah.avi	*	*	3	*	*
+MultiEpisodeTests.cs:62	parser		Season 2/02-04 - blah 14 blah.avi	*	*	4	*	*
+MultiEpisodeTests.cs:63	parser		Season 1/02-05 - blah-02 a.avi	*	*	5	*	*
+MultiEpisodeTests.cs:64	parser		Season 2/02-04.avi	*	*	4	*	*
+MultiEpisodeTests.cs:65	parser		Season 2 /[GROUP] Blue Canyon - 136[720p].mkv	*	*		*	*
+MultiEpisodeTests.cs:67	parser		Season 1/series-s09e14-1080p.mkv	*	*		*	*
+MultiEpisodeTests.cs:68	parser		Season 1/series-s09e14-720p.mkv	*	*		*	*
+MultiEpisodeTests.cs:69	parser		Season 1/series-s09e14-720i.mkv	*	*		*	*
+MultiEpisodeTests.cs:70	parser		Season 1/NORTHWIND_s01e01-e04.mkv	*	*	4	*	*
+MultiEpisodeTests.cs:71	parser		Season 1/NORTHWIND_s01e01-e04	*	*	4	*	*
+MultiEpisodeTests.cs:73	parser		Season 1/S01E01 The 6-10 to Coldwater [WEBRip-1080p][AV1 Opus].mkv	*	*		*	*
+MultiEpisodeTests.cs:74	parser		Season 5/S05E23 11-59 [HDTV-1080p][x265 AC3].mkv	*	*		*	*
+MultiEpisodeTests.cs:75	parser		Season 5/S05E23 11-59 [HDTV-1080p][HEVC AC3].mkv	*	*		*	*
+MultiEpisodeTests.cs:76	parser		Season 1/S01E01 1-23-45 [Bluray-1080p][AV1 Opus].mkv	*	*		*	*
+MultiEpisodeTests.cs:78	parser		Season 03/Golden Meridian (2001) - S03E21 - E2 (1080p Disc x265).mkv	*	*		*	*
+MultiEpisodeTests.cs:79	parser		Season 02/Series Name (2001) - S02E10 - E5 [WEBRip-1080p].mkv	*	*		*	*
+AbsoluteEpisodeNumberTests.cs:12	resolve	absolute	Harbour Lights/12.avi	*	12	*	*	*
+AbsoluteEpisodeNumberTests.cs:13	resolve	absolute	Harbour Lights/Harbour Lights 12.avi	*	12	*	*	*
+AbsoluteEpisodeNumberTests.cs:14	resolve	absolute	Harbour Lights/Harbour Lights 82.avi	*	82	*	*	*
+AbsoluteEpisodeNumberTests.cs:15	resolve	absolute	Harbour Lights/Harbour Lights 112.avi	*	112	*	*	*
+AbsoluteEpisodeNumberTests.cs:16	resolve	absolute	Harbour Lights/Nightjar_ep_02.avi	*	2	*	*	*
+AbsoluteEpisodeNumberTests.cs:17	resolve	absolute	Harbour Lights/Harbour Lights 889.avi	*	889	*	*	*
+AbsoluteEpisodeNumberTests.cs:18	resolve	absolute	Harbour Lights/Harbour Lights 101.avi	*	101	*	*	*
+DailyEpisodeTests.cs:12	resolve		/server/anything_1996.11.14.mp4				anything	1996-11-14
+DailyEpisodeTests.cs:13	resolve		/server/anything_1996-11-14.mp4				anything	1996-11-14
+DailyEpisodeTests.cs:14	resolve		/server/golden.meridian.2017.04.20.quiet.harbour.720p.pdtv.xvid-example.mkv				golden.meridian	2017-04-20
+DailyEpisodeTests.cs:15	resolve		/server/Signal Hill 2018_03_24_19_00_00.mkv				Signal Hill	2018-03-24
+DailyEpisodeTests.cs:16	resolve		/server/Amberlight 2023 07 14 HDTV x264 AC3.mkv				Amberlight	2023-07-14
+EpisodeNumberWithoutSeasonTests.cs:12	resolve		Harbour Lights/Harbour Lights.S25E08.The Quiet One.mp4	*	8	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:13	resolve		Harbour Lights/Harbour Lights - 02 - Ep Name.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:14	resolve		Harbour Lights/02.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:15	resolve		Harbour Lights/02 - Ep Name.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:16	resolve		Harbour Lights/02-Ep Name.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:17	resolve		Harbour Lights/02.EpName.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:18	resolve		Harbour Lights/Harbour Lights - 02.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:19	resolve		Harbour Lights/Harbour Lights - 02 Ep Name.avi	*	2	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:20	resolve		Blue Aviary (2013)/Blue Aviary - 07.mkv	*	7	*	*	*
+EpisodeNumberWithoutSeasonTests.cs:21	resolve		Winter Foundry (1996-2007)/Winter Foundry - 317.mkv	*	317	*	*	*
+SeasonNumberTests.cs:12	resolve		Hollowmere/Hollowmere 25x22 - [WEBDL-720p][AAC 2.0][x264] Golden Pilgrim-EXAMPLE.mkv	25	*	*	*	*
+SeasonNumberTests.cs:13	resolve		/Show/Season 02/S02E03 blah.avi	2	*	*	*	*
+SeasonNumberTests.cs:14	resolve		Season 1/seriesname S01x02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:15	resolve		Season 1/S01x02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:16	resolve		Season 1/seriesname S01xE02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:17	resolve		Season 1/01x02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:18	resolve		Season 1/S01E02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:19	resolve		Season 1/S01xE02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:20	resolve		Season 1/seriesname 01x02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:21	resolve		Season 1/seriesname S01E02 blah.avi	1	*	*	*	*
+SeasonNumberTests.cs:22	resolve		Season 2/Northwind - 02x03 - 02x04 - 02x15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:23	resolve		Season 2/02x03 - 02x04 - 02x15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:24	resolve		Season 2/02x03-04-15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:25	resolve		Season 2/Northwind - 02x03-04-15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:26	resolve		Season 02/02x03-E15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:27	resolve		Season 02/Northwind - 02x03-E15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:28	resolve		Season 02/02x03 - x04 - x15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:29	resolve		Season 02/Northwind - 02x03 - x04 - x15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:30	resolve		Season 02/02x03x04x15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:31	resolve		Season 02/Northwind - 02x03x04x15 - Ep Name.mp4	2	*	*	*	*
+SeasonNumberTests.cs:32	resolve		Season 1/Northwind - S01E23-E24-E26 - The Anchor.mp4	1	*	*	*	*
+SeasonNumberTests.cs:33	resolve		Season 1/S01E23-E24-E26 - The Anchor.mp4	1	*	*	*	*
+SeasonNumberTests.cs:34	resolve		Season 25/Harbour Lights.S25E09.The Quiet One.mp4	25	*	*	*	*
+SeasonNumberTests.cs:35	resolve		Harbour Lights/Harbour Lights.S25E09.The Quiet One.mp4	25	*	*	*	*
+SeasonNumberTests.cs:36	resolve		2016/Season s2016e1.mp4	2016	*	*	*	*
+SeasonNumberTests.cs:37	resolve		2016/Season 2016x1.mp4	2016	*	*	*	*
+SeasonNumberTests.cs:38	resolve		Season 2009/2009x02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:39	resolve		Season 2009/S2009x02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:40	resolve		Season 2009/S2009E02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:41	resolve		Season 2009/S2009xE02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:42	resolve		Season 2009/seriesname 2009x02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:43	resolve		Season 2009/seriesname S2009x02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:44	resolve		Season 2009/seriesname S2009E02 blah.avi	2009	*	*	*	*
+SeasonNumberTests.cs:45	resolve		Season 2009/Northwind - 2009x03 - 2009x04 - 2009x15 - Ep Name.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:46	resolve		Season 2009/2009x03 - 2009x04 - 2009x15 - Ep Name.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:47	resolve		Season 2009/2009x03-04-15 - Ep Name.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:48	resolve		Season 2009/Northwind - 2009x03 - x04 - x15 - Ep Name.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:49	resolve		Season 2009/2009x03x04x15 - Ep Name.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:50	resolve		Season 2009/Northwind - 2009x03x04x15 - Ep Name.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:51	resolve		Season 2009/Northwind - S2009E23-E24-E26 - The Anchor.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:52	resolve		Season 2009/S2009E23-E24-E26 - The Anchor.mp4	2009	*	*	*	*
+SeasonNumberTests.cs:53	resolve		Series/1-12 - The Anchor.mp4	1	*	*	*	*
+SeasonNumberTests.cs:54	resolve		Signal Hill/Signal Hill S2017E368.mkv	2017	*	*	*	*
+SeasonNumberTests.cs:55	resolve		Winter Foundry (1996-2007)/Winter Foundry - 317.mkv		*	*	*	*
