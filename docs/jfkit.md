@@ -333,6 +333,51 @@ refuses the candidate; nothing is deleted, things are moved; the row goes after
 the file has arrived; and every step is logged, including the ones that did
 nothing.
 
+## `jfkit.dedupe` -- copies of one film, resolved as one plan
+
+See `docs/methods/duplicate-resolution.md`. Copies of one film are found by
+provider identifier and copies of one episode by series, season and episode
+plus an identifier they share -- never by a name, and never across the
+segments of one episode (`S01E01a`, `S01E01b`). Every copy is probed, one
+reader per disk; the keeper is the copy that may replace every other under
+`[policy]` and `[policy.dedupe]`, ranked by `prefer`; and its payload is read
+before anything is planned. A keeper that does not play blocks its group.
+
+```
+jfkit dedupe                                   # the dry run: verdicts and the plan
+jfkit dedupe --type movie --json dedupe.json --tsv dedupe.tsv --plan-out dedupe.plan.json
+jfkit dedupe --plan dedupe.plan.json --audit dedupe.audit.jsonl --apply
+jfkit dedupe --plan dedupe.plan.json --audit dedupe.audit.jsonl   # where a run stopped
+```
+
+| switch | meaning |
+|---|---|
+| `--type movie\|episode` | only films, or only episodes (repeatable; default both) |
+| `--parent ID` | only below this library, series or folder (repeatable) |
+| `--keeper-check full\|quick` | how the keeper is read while planning: decoded, or every packet listed (default `policy.dedupe.keeper_check`, `full`); there is no way to skip it |
+| `--parked DIR` | where parked copies go, keeping their layout; a relative folder is taken on each file's own volume (default `[paths] parked`, else `_parked` on each volume; `--apply` needs one of the first two) |
+| `--json PATH`, `--tsv PATH` | also write every verdict, copy and the plan as JSON, or one row per copy as tab-separated text |
+| `--plan-out PATH`, `--plan PATH`, `--audit PATH` | save the plan; apply a saved one instead of planning again; the JSON-lines audit an applied run appends to and a resumed run reads |
+| `--jobs N` | server requests at once (default 4); disks are always read one reader each |
+| `--no-gate`, `--gate-wait SECONDS` | do not ask the device gate before each read; how long to wait for a busy disk before giving up on a copy (default 300) |
+| `--dry-run` / `--apply` | the dry run is the default; `--apply` needs `--audit` |
+
+Each group gets one verdict, with its reasons: `SAFE` (a keeper, its payload
+read), `KEEP_BOTH` (no copy may replace the others, or different cuts),
+`BLOCKED` (a copy or the keeper's payload could not be read, or the keeper
+failed its check) or `NOT_DUPLICATE` (segments, one file catalogued twice,
+disagreeing identifiers, or episodes linked only by their slot). The plan
+carries every user's watched state onto the keeper first, then parks each
+other copy through `jfkit.safedelete` (category `resolved-duplicate`, which
+re-checks that the state is on the keeper), then its sidecars, then release
+folders left with no video, then sends one narrow notification. Exit 1 when
+a group is `BLOCKED` or an applied step failed.
+
+The library side is `find_groups(items)`, `resolve(groups, rules, prober=,
+checker=, device_of=, before_each=)`, `choose(copies, rules)`,
+`coverage(keeper, loser, rules)` and `build_plan(client, verdicts, parked=)`,
+with `actions(client)` for `mkvkit.steps.apply`.
+
 ## `jfkit.segments` and `jfkit.jobs`
 
 Scoping a segment analysis to media that is not already covered, and not

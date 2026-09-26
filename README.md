@@ -186,7 +186,7 @@ Beside them, references that stand on their own: `docs/gotchas/` on one media
 server release and on Matroska and ffmpeg, guides to each side in
 `docs/mkvkit.md` and `docs/jfkit.md`, `docs/methods/` on the verification
 discipline, the spoken-language settle ladder, aligning a dub to a different
-transfer, the swap procedure and evidence-first deletion, `docs/patterns/` on detached jobs and the device
+transfer, the swap procedure, evidence-first deletion and resolving duplicates, `docs/patterns/` on detached jobs and the device
 gate, `docs/runbooks/` on looking after the catalogue database, and two fully
 invented worked recipes under `examples/recipes/`. Every gotcha entry carries the symptom,
 the cause and the fix; each reference states the versions its entries were

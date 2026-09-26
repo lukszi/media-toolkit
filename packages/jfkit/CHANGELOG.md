@@ -21,6 +21,25 @@ day the work was done.
   park, move or rename.
 - **`jfkit.healthlink`: the server's half of `mkvkit health`** -- its gate,
   and each suspect file's item id and title.
+- **`dedupe`.** Copies of one film or episode resolved into one keeper and
+  parked copies, as one audited plan. Films are grouped by provider
+  identifier, episodes by series, season and episode plus a shared
+  identifier -- never by a name -- and the segments of one episode are kept
+  apart. Every copy is probed one reader per disk; the keeper is the copy
+  that may replace every other under `[policy]` and `[policy.dedupe]` (audio
+  languages at equal or more channels, lossless and commentary tracks, kept
+  and forced subtitle languages, the running time), ranked by lossless,
+  channels, source, resolution class and bitrate; a conflict keeps both.
+  The keeper's payload is read with `mkvkit integrity` before anything is
+  planned, and a keeper that fails blocks its group. The plan carries every
+  user's watched state onto the keeper, parks the other copies with their
+  sidecars, parks release folders left with no video and notifies narrowly.
+  Dry run by default; `--apply` with an audit; resumable.
+- **A `resolved-duplicate` category for `delete`.** It parks a copy whose
+  watched state is non-blank, once every user's state is on the kept item,
+  and checks that again at the moment of the park.
+- **`userdata.merge` and `userdata.carries`.** One user's state across
+  several copies of one film as one row, and whether one row holds another.
 
 - **`find`, `children` and `playstate`.** Items by name, path, provider id
   or type; an item's children, descendants or extras; and every user's
@@ -48,6 +67,10 @@ day the work was done.
 
 ### Fixed
 
+- **`survey duplicates` does not call segments duplicates.** Files named as
+  parts of one episode (`S01E01a`, `S01E01b`, `part1`) share its identifiers
+  and were grouped as copies. The segment is part of the group key now, and
+  identifiers shared by distinct segments are counted separately.
 - **`delete` does not call a folder media-free when it holds a link.** A
   junction or symbolic link below a released folder was walked into -- onto
   whatever disk it pointed at -- or ignored. The check now walks without

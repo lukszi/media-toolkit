@@ -22,6 +22,11 @@ and not say so.
   per file (OK, SUSPECT, CORRUPT, UNREADABLE) with its evidence as a table,
   JSON and TSV. Read-only; corrupt files are printed as a deletion manifest
   for a person to release.
+- **A `[policy.dedupe]` table.** The duplicate resolver's rules as
+  configuration: the running-time tolerance and the gap that makes two
+  cuts, the order keepers are ranked in, what counts as lossless audio, a
+  commentary, a source or a re-encode, and how the keeper's payload is read.
+  Every problem in it is reported with the rest of the file's.
 - **`mkvkit.walk` does not wander onto another disk.** A junction is a
   directory that `os.path.islink` calls ordinary, so a plain walk descends
   into it. `walk()` enters no symbolic link, junction or other directory
