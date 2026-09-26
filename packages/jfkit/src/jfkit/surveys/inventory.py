@@ -10,7 +10,10 @@ re-run and therefore cannot be compared with anything.
 that survives a rename. Two rows are reported where the same identifier
 appears on more than one item, and the group carries enough to decide with:
 each one's size, runtime, resolution, container and how many audio tracks it
-has. It deliberately does not decide: a smaller file with an extra dubbed
+has. Segments are not copies: files named as parts of one episode or film
+(``S01E01a`` and ``S01E01b``, ``part1`` and ``part2``) may share every
+identifier, and are counted separately rather than grouped. It deliberately
+does not decide: a smaller file with an extra dubbed
 track is not the worse copy, and the survey's job is to put the numbers side
 by side.
 
@@ -27,6 +30,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..dedupe.groups import segment_of
 from ..dto import TICKS_PER_SECOND
 from ..naming import PARSED_AGAINST, Rule, parse
 from ..report import Column, Survey
@@ -136,6 +140,7 @@ def duplicates(items: Sequence[Mapping[str, Any]]) -> Survey:
         Column("group", "Group"),
         Column("provider", "Provider"),
         Column("identifier", "Identifier"),
+        Column("segment", "Segment"),
         Column("item", "Item"),
         Column("path", "Path"),
         Column("size_gib", "Size (GiB)", kind="number", places=2),
@@ -145,18 +150,25 @@ def duplicates(items: Sequence[Mapping[str, Any]]) -> Survey:
         Column("audio_tracks", "Audio tracks", kind="number"),
         Column("subtitle_tracks", "Subtitle tracks", kind="number"),
     ]
-    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    groups: dict[tuple[str, str, str], list[Mapping[str, Any]]] = {}
+    segments: dict[tuple[str, str], set[str]] = {}
     for item in items:
         if item.get("Type") not in {"Movie", "Episode"}:
             continue
+        # a segment is part of the key: two parts of one episode share its
+        # identifiers and are not copies of each other
+        segment = segment_of(str(item.get("Path") or "")) or ""
         for provider, identifier in (item.get("ProviderIds") or {}).items():
             if identifier:
-                groups.setdefault((str(provider), str(identifier)), []).append(item)
+                key = (str(provider), str(identifier))
+                groups.setdefault((*key, segment), []).append(item)
+                segments.setdefault(key, set()).add(segment)
+    segmented = sum(1 for found in segments.values() if len(found) > 1)
 
     rows: list[dict[str, Any]] = []
     reclaimable = 0
     number = 0
-    for (provider, identifier), members in sorted(groups.items()):
+    for (provider, identifier, segment), members in sorted(groups.items()):
         if len(members) < 2:
             continue
         number += 1
@@ -170,6 +182,7 @@ def duplicates(items: Sequence[Mapping[str, Any]]) -> Survey:
                 "group": number,
                 "provider": provider,
                 "identifier": identifier,
+                "segment": segment,
                 "item": item.get("Name"),
                 "path": item.get("Path"),
                 "size_gib": None if size is None else int(size) / 2**30,
@@ -195,6 +208,7 @@ def duplicates(items: Sequence[Mapping[str, Any]]) -> Survey:
             "groups": number,
             "items in a group": len(rows),
             "at most reclaimable": f"{reclaimable / 2**30:.1f} GiB",
+            "identifiers shared by distinct segments (not duplicates)": segmented,
         },
         scope={"types": "Movie, Episode", "items seen": len(items)},
         caveats=[
@@ -204,6 +218,9 @@ def duplicates(items: Sequence[Mapping[str, Any]]) -> Survey:
             "The reclaimable figure assumes keeping the largest of each group, "
             "which is not a recommendation. A smaller file carrying a track the "
             "larger one does not have is not the worse copy.",
+            "A file whose name marks it as one segment (a letter after the "
+            "episode number, or a part number) is grouped only with copies of the "
+            "same segment; the segments of one episode are counted, not grouped.",
             "Nothing here is a decision. The evidence for deleting anything is "
             "gathered per item, against the file, and that is a different tool.",
         ],

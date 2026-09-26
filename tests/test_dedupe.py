@@ -51,6 +51,7 @@ from jfkit.dedupe import (
 )
 from jfkit.dedupe.facts import origin_of
 from jfkit.safedelete import Candidate, safe_delete
+from jfkit.surveys import build
 from mkvkit.config import ConfigError, DedupePolicy, loads
 from mkvkit.integrity import IntegrityReport
 from mkvkit.steps import apply, read_audit
@@ -291,6 +292,25 @@ def test_an_item_with_two_sources_is_two_copies() -> None:
     assert [m.item_id for m in found] == [ident(1), ident(9)]
     assert all(m.parent_id == ident(1) for m in found)
     assert len(find_groups([row]).groups) == 1
+
+
+# ----------------------------------------------------- the survey, fixed too
+def test_the_duplicates_survey_does_not_group_segments() -> None:
+    folder = "/srv/media/series/Harbour Lights"
+    rows = [
+        episode_row(10 + i, ident(100), "Harbour Lights",
+                    f"{folder}/Harbour Lights - s01e01{letter}.mkv",
+                    ProviderIds={"Tvdb": "777"})
+        for i, letter in enumerate("ab")
+    ]
+    survey = build("duplicates", rows)
+    assert survey.rows == []
+    assert survey.summary["identifiers shared by distinct segments (not duplicates)"] == 1
+    survey = build("duplicates", [*rows, episode_row(
+        13, ident(100), "Harbour Lights", f"{folder}/old/Harbour Lights - S01E01a.mkv",
+        ProviderIds={"Tvdb": "777"})])
+    assert survey.summary["groups"] == 1
+    assert {row["segment"] for row in survey.rows} == {"a"}
 
 
 # ===================================================================== rules
