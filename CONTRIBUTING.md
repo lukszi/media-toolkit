@@ -98,7 +98,7 @@ that adds a writing path without both is not merged.
 git clone https://github.com/lukszi/media-toolkit
 cd media-toolkit
 pip install -e packages/mkvkit -e packages/jfkit -e packages/dubalign
-pip install pytest ruff==0.15.0 mypy==1.19.1
+pip install pytest pytest-xdist ruff==0.15.0 mypy==1.19.1
 pytest -m "not needs_ffmpeg and not needs_mkvtoolnix and not needs_asr"
 ```
 
@@ -123,6 +123,24 @@ takes seconds, and each fixture exists to make one known answer checkable --
 a track whose tag contradicts its header, a container that is not what its
 extension claims, a pair shifted by an amount the measurement must recover, a
 chapter grid at times the code must reproduce.
+
+The built set is a cache: it sits in a directory named after a hash of the
+generator, the programs that encode and the alignment code, so it is reused
+until one of those changes and rebuilt beside the old one when one does.
+The first test that needs it builds it if the command above has not; test
+processes running in parallel build it once between them.
+`MEDIA_TOOLKIT_FIXTURE_DIR` moves it elsewhere, and
+`python -m tests.fixtures clean` empties it.
+
+The suite runs in parallel with pytest-xdist:
+
+```
+pip install pytest-xdist
+pytest -n auto
+```
+
+Without `-n` it runs in one process and takes a few times longer; nothing in
+it depends on which of the two it is.
 
 Markers: `needs_ffmpeg`, `needs_mkvtoolnix`, `needs_asr`, `slow`,
 `repository`. A test that needs an external program declares it; tests skip

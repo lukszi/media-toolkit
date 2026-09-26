@@ -9,6 +9,13 @@ takes seconds and is deterministic -- the noise source is seeded, and the
 encoders used are the ones built into ffmpeg itself, so nothing here depends
 on which external encoder libraries a build happens to carry.
 
+The built set is a cache, keyed by everything its bytes depend on: this
+generator, the answer key in ``tests/synthetic.py``, the encoding programs and
+the alignment package. It lives in ``tests/_fixtures/<key>/`` (or under
+``$MEDIA_TOOLKIT_FIXTURE_DIR``), is built once under a lock however many test
+processes ask for it at the same time, and is reused by every later run until
+one of those inputs changes. ``python -m tests.fixtures clean`` removes it.
+
 Every fixture exists to make one known answer checkable:
 
 ``tiny_multitrack.mkv``
@@ -65,17 +72,24 @@ Every fixture exists to make one known answer checkable:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
+import tempfile
+import time
+from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 __all__ = [
     "AUDIO_TRACKS",
+    "CACHE_VARIABLE",
     "CHAPTER_NAMES",
     "CHAPTER_STEP_S",
     "CHAPTER_TIMES_S",
@@ -90,6 +104,8 @@ __all__ = [
     "SUBTITLE_CUES",
     "TAG_OVERRIDE_LANGUAGE",
     "build",
+    "cache_key",
+    "cache_root",
     "ffmpeg_missing",
     "main",
     "mkvtoolnix_missing",
@@ -419,70 +435,237 @@ def _tag_override(path: Path, source: Path, work: Path) -> None:
     _run("mkvpropedit", [str(path), "--tags", f"all:{document_path}"])
 
 
+# ----------------------------------------------------------------------- cache
+#: Set this to keep the cache somewhere else -- outside the checkout, or in a
+#: directory a CI cache restores. The default is ``tests/_fixtures``.
+CACHE_VARIABLE = "MEDIA_TOOLKIT_FIXTURE_DIR"
+
+#: What a finished build leaves in its directory, last: the names it built.
+MANIFEST = "manifest.json"
+
+#: The programs whose output ends up in a fixture.
+_BUILD_PROGRAMS = ("ffmpeg", "mkvmerge", "mkvextract", "mkvpropedit")
+
+
+def cache_root() -> Path:
+    """Where built fixture sets live, one directory per cache key."""
+    configured = os.environ.get(CACHE_VARIABLE)
+    return Path(configured).resolve() if configured else FIXTURE_DIR
+
+
+def _identity(program: str) -> str:
+    """A program as a cache key sees it: where it is and which build it is.
+
+    The size and modification time of the executable rather than its
+    ``--version``: that would start every program once per test process, and an
+    upgrade changes the file anyway.
+    """
+    found = locate(program)
+    if found is None:
+        return f"{program}=absent"
+    stat = Path(found).stat()
+    return f"{program}={found}|{stat.st_size}|{stat.st_mtime_ns}"
+
+
+def _source_digest(paths: Sequence[Path]) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        digest.update(path.name.encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def cache_key() -> str:
+    """Everything a fixture's bytes depend on, hashed.
+
+    The generator and the answer key it is written from, the programs that
+    encode, and -- for the drifting pair -- the alignment package and the
+    numerical library that compute its two signals. Change any of them and the
+    next run builds a fresh set beside the old one instead of trusting it.
+    """
+    here = Path(__file__).resolve()
+    parts = [
+        f"generator={_source_digest([here, here.parents[1] / 'synthetic.py'])}",
+        *(_identity(program) for program in _BUILD_PROGRAMS),
+    ]
+    if _alignment_available():
+        import dubalign
+        import numpy
+
+        package = Path(dubalign.__file__).resolve().parent
+        parts += [
+            f"dubalign={_source_digest(list(package.glob('*.py')))}",
+            f"numpy={numpy.__version__}",
+        ]
+    else:
+        parts.append("dubalign=absent")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:20]
+
+
+@contextmanager
+def _exclusive(root: Path) -> Iterator[None]:
+    """Hold the cache's lock: one builder at a time, across processes.
+
+    An operating-system lock rather than a lock file that is created and
+    removed, because the system releases it when its holder dies: a build
+    interrupted half-way leaves nothing that makes the next run wait.
+    """
+    handle = (root / ".lock").open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            while True:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
+def _built(directory: Path) -> dict[str, Path] | None:
+    """A finished set by name, or None where there is none (or only half of one)."""
+    try:
+        names = json.loads((directory / MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    built = {name: directory / name for name in names}
+    return built if all(path.is_file() for path in built.values()) else None
+
+
 # ----------------------------------------------------------------------- build
+def _generate(directory: Path) -> list[str]:
+    """Build every fixture into an empty directory; return the names built.
+
+    The builders that do not depend on each other run side by side: each one
+    is a separate program doing its own encoding, and waiting for them one at
+    a time was most of a cold run's cost.
+    """
+    work = directory / ".work"
+    work.mkdir()
+    path = {name: directory / name for name in (*NAMES, *OPTIONAL_NAMES)}
+    with_containers = mkvtoolnix_missing() is None
+    with_drift = _alignment_available()
+
+    def multitrack() -> None:
+        _subtitles(path["sample_cues.srt"])
+        _multitrack_mkv(path["tiny_multitrack.mkv"], path["sample_cues.srt"])
+        if with_containers:
+            _tag_override(path["tag_override.mkv"], path["tiny_multitrack.mkv"], work)
+
+    def other_container() -> None:
+        _multitrack_mp4(path["tiny_multitrack.mp4"])
+        # the same bytes under the wrong extension: the container-type guard
+        shutil.copyfile(path["tiny_multitrack.mp4"], path["not_really_mkv.mkv"])
+
+    def grid(name: str, scale: float) -> None:
+        metadata = work / f"{Path(name).stem}.ffmeta"
+        _chapter_metadata(metadata, scale)
+        _chapter_grid(path[name], metadata, scale)
+
+    jobs: list[Callable[[], None]] = [
+        multitrack,
+        other_container,
+        lambda: _offset_pair(path["offset_pair.mka"]),
+        lambda: grid("chapter_grid.mkv", 1.0),
+        lambda: grid("chapter_grid_pal.mkv", PAL_RATIO),
+    ]
+    if with_drift:
+        jobs.append(lambda: _drift_pair(path["drift_pair.mka"], work))
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        for future in [pool.submit(job) for job in jobs]:
+            future.result()
+    shutil.rmtree(work)
+
+    names = list(NAMES)
+    if with_containers:
+        names.append("tag_override.mkv")
+    if with_drift:
+        names.append("drift_pair.mka")
+    return names
+
+
 def build(out_dir: Path | None = None, *, force: bool = False) -> dict[str, Path]:
-    """Generate anything missing and return every fixture by name."""
+    """Return every fixture by name, building the set first if it is not cached.
+
+    A set lives in ``<root>/<cache key>/``. It is built into a scratch
+    directory beside it and renamed into place in one step, under a lock:
+    parallel test processes build it once between them, and a directory under
+    its final name is always a complete one. ``out_dir`` is the root and
+    defaults to :func:`cache_root`; ``force`` builds the set again even where
+    it is cached.
+    """
     missing = ffmpeg_missing()
     if missing:
         raise RuntimeError(f"cannot build fixtures: {missing} not on the PATH")
-    root = FIXTURE_DIR if out_dir is None else Path(out_dir)
+    root = cache_root() if out_dir is None else Path(out_dir).resolve()
+    target = root / cache_key()
+    if not force:
+        cached = _built(target)
+        if cached is not None:
+            return cached
+
     root.mkdir(parents=True, exist_ok=True)
-    built = {name: root / name for name in NAMES}
-    if force:
-        for path in built.values():
-            path.unlink(missing_ok=True)
-
-    if not built["sample_cues.srt"].exists():
-        _subtitles(built["sample_cues.srt"])
-    if not built["tiny_multitrack.mkv"].exists():
-        _multitrack_mkv(built["tiny_multitrack.mkv"], built["sample_cues.srt"])
-    if not built["tiny_multitrack.mp4"].exists():
-        _multitrack_mp4(built["tiny_multitrack.mp4"])
-    if not built["not_really_mkv.mkv"].exists():
-        # the same bytes under the wrong extension: the container-type guard
-        shutil.copyfile(built["tiny_multitrack.mp4"], built["not_really_mkv.mkv"])
-    if not built["offset_pair.mka"].exists():
-        _offset_pair(built["offset_pair.mka"])
-
-    for name, scale in (("chapter_grid.mkv", 1.0), ("chapter_grid_pal.mkv", PAL_RATIO)):
-        if not built[name].exists():
-            metadata = root / f"{Path(name).stem}.ffmeta"
-            _chapter_metadata(metadata, scale)
-            _chapter_grid(built[name], metadata, scale)
-    drift = root / "drift_pair.mka"
-    if force:
-        drift.unlink(missing_ok=True)
-    if drift.exists():
-        built["drift_pair.mka"] = drift
-    elif _alignment_available():
-        _drift_pair(drift, root)
-        built["drift_pair.mka"] = drift
-    if mkvtoolnix_missing() is None:
-        optional = root / "tag_override.mkv"
-        if force:
-            optional.unlink(missing_ok=True)
-        if not optional.exists():
-            _tag_override(optional, built["tiny_multitrack.mkv"], root)
-        built["tag_override.mkv"] = optional
+    with _exclusive(root):
+        if not force:
+            cached = _built(target)
+            if cached is not None:
+                return cached
+        # Holding the lock, nobody else is building: anything half-built here
+        # was left by a run that was interrupted.
+        for leftover in root.glob(".building-*"):
+            shutil.rmtree(leftover, ignore_errors=True)
+        scratch = Path(tempfile.mkdtemp(prefix=".building-", dir=root))
+        names = _generate(scratch)
+        (scratch / MANIFEST).write_text(json.dumps(names), encoding="utf-8")
+        if target.exists():
+            shutil.rmtree(target)
+        scratch.rename(target)
+    built = _built(target)
+    if built is None:
+        raise RuntimeError(f"the fixture set in {target} is incomplete")
     return built
 
 
 def clean(out_dir: Path | None = None) -> int:
-    root = FIXTURE_DIR if out_dir is None else Path(out_dir)
+    """Remove every cached set, and anything an older layout left in the root."""
+    root = cache_root() if out_dir is None else Path(out_dir)
     removed = 0
     if root.is_dir():
         for path in sorted(root.iterdir()):
-            if path.is_file():
+            if path.name == ".lock":
+                continue
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
                 path.unlink()
-                removed += 1
+            removed += 1
     return removed
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tests.fixtures")
-    parser.add_argument("action", choices=("build", "clean", "list"), nargs="?",
+    parser.add_argument("action", choices=("build", "clean", "list", "where"), nargs="?",
                         default="build")
-    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--out", type=Path, default=None,
+                        help=f"the cache root (default: {CACHE_VARIABLE} from the "
+                             "environment, else tests/_fixtures)")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
 
@@ -491,7 +674,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(name)
         return 0
     if args.action == "clean":
-        print(f"removed {clean(args.out)} file(s)")
+        print(f"removed {clean(args.out)} entries")
+        return 0
+    if args.action == "where":
+        print(cache_root() if args.out is None else Path(args.out).resolve())
         return 0
     missing = ffmpeg_missing()
     if missing:
