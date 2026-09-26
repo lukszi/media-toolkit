@@ -98,5 +98,13 @@ def _rollbacks_stay_in_the_test(
     """
     from mkvkit import propedit
 
-    where = tmp_path_factory.mktemp("rollback")
-    monkeypatch.setattr(propedit, "default_rollback_dir", lambda _config: where)
+    # Made on first use: most tests never write a rollback, and a directory
+    # per test for all of them was a measurable share of the whole run.
+    made: list[Path] = []
+
+    def where(_config: object) -> Path:
+        if not made:
+            made.append(tmp_path_factory.mktemp("rollback"))
+        return made[0]
+
+    monkeypatch.setattr(propedit, "default_rollback_dir", where)
