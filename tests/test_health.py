@@ -684,3 +684,27 @@ def test_a_piece_of_a_copied_disc_is_judged_by_its_payload_only(tmp_path: Path) 
         93000.0, {"index": 0, "codec_type": "video", "height": 576, "duration": "1380"},
     ), 2 << 20, Settings(), disc=True)
     assert found == []
+
+
+@pytest.mark.needs_ffmpeg
+def test_confirm_only_reads_just_the_listed_suspects_in_order(
+    library: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = tmp_path / "state.jsonl"
+    common = ["--gate", "off", "--state", str(state), "--blocks", "16", "--block-kib", "16"]
+    assert mkvkit_cli.main(["health", str(library["root"]), *common, "--no-confirm"]) == 1
+    capsys.readouterr()
+    listing = tmp_path / "only.txt"
+    listing.write_text(f"{library['truncated']}\n{library['healthy']}\n", encoding="utf-8")
+    report = tmp_path / "health.json"
+    assert mkvkit_cli.main([
+        "health", str(library["root"]), *common, "--from-state",
+        "--confirm-only", str(listing), "--json", str(report),
+    ]) == 1
+    err = capsys.readouterr().err
+    assert "1 listed path(s) are not stage-1 suspects" in err
+    assert "stage 2: confirming 1 of 1 suspect(s)" in err
+    rows = {Path(r["path"]).name: r for r in
+            json.loads(report.read_text(encoding="utf-8"))["results"]}
+    assert rows[library["truncated"].name]["verdict"] == CORRUPT
+    assert rows[library["zeroed"].name]["verdict"] == SUSPECT, "not listed, not read"

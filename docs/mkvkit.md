@@ -169,7 +169,8 @@ files an older version called suspect.
 listed, every frame decoded -- makes a suspect **CORRUPT**, or clears it to
 **OK**. A file the demuxer cannot open at all is CORRUPT too; one nothing
 could open, or a missing program, is UNREADABLE. `--confirm N` confirms at
-most N suspects, `--no-confirm` stops after stage 1, `--no-decode` lists
+most N suspects, `--confirm-only FILE` confirms just the suspects listed there (in
+that order), `--no-confirm` stops after stage 1, `--no-decode` lists
 packets without decoding.
 
 **One reader per disk.** Both stages run through `lanes.map_by_device`: one

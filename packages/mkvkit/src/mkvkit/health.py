@@ -1236,6 +1236,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[ty
     confirm_group = parser.add_argument_group("stage 2")
     confirm_group.add_argument("--confirm", type=int, metavar="N",
                                help="confirm at most N suspects (default: all)")
+    confirm_group.add_argument("--confirm-only", type=Path, metavar="FILE",
+                               help="confirm only the suspects listed here, one path per "
+                                    "line, in that order within each disk")
     confirm_group.add_argument("--no-confirm", action="store_true",
                                help="stop after stage 1")
     confirm_group.add_argument("--no-decode", action="store_true",
@@ -1353,6 +1356,18 @@ def _health(args: argparse.Namespace, config: Config) -> int:
     suspects = [r for r in results.values() if r.verdict == SUSPECT and r.stage == 1]
     suspects.sort(key=lambda r: (-(r.zero_blocks or 0) / max(1, r.sampled_blocks or 1),
                                  r.path))
+    if args.confirm_only is not None:
+        order = {
+            StateFile.key(line.strip()): n for n, line in enumerate(
+                Path(args.confirm_only).read_text(encoding="utf-8").splitlines()
+            ) if line.strip()
+        }
+        listed = [s for s in suspects if StateFile.key(s.path) in order]
+        listed.sort(key=lambda s: order[StateFile.key(s.path)])
+        if len(listed) < len(order):
+            print(f"stage 2: {len(order) - len(listed)} listed path(s) are not stage-1 "
+                  "suspects and are not confirmed", file=sys.stderr)
+        suspects = listed
     if not args.no_confirm and suspects:
         chosen = suspects if args.confirm is None else suspects[:max(0, args.confirm)]
         print(f"stage 2: confirming {len(chosen)} of {len(suspects)} suspect(s)",
