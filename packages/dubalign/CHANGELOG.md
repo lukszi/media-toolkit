@@ -26,6 +26,12 @@ day the work was done.
   signal are candidates, a jump past the end is clamped to it, and among
   equally quiet spans (digital silence) the one nearest the jump is chosen
   rather than the earliest.
+- **A stretch with no drift is copied, not resampled.** A plan took each
+  stretch's rate as `1 + slope` even where the measurement called the stretch
+  flat. The slope fitted to a constant lag is rounding noise of about 1e-17,
+  and on some builds of the linear-algebra library `1 +` that is the float just
+  below 1.0, so the stretch went through the resampler for nothing. A stretch
+  the measurement does not call drifting is now read at exactly 1.0.
 - **The printed rate ratio is the one the plan uses.** `RateFit.rate_ratio` and
   the change-point segments' `rate_ratio` printed the reciprocal of the value
   written into a plan. Both are now `1 + slope`, the read ratio the splice uses,

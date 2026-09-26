@@ -10,6 +10,8 @@ quieter place a long way from the jump it is meant to render.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 from dubalign.align import ANALYSIS_RATE, FULL_RATE
@@ -279,6 +281,28 @@ def test_the_drifting_stretch_carries_its_rate_and_the_flat_one_does_not() -> No
     assert tail.drifts
     assert tail.rate_ratio == pytest.approx(1.0 - 5e-4)
     assert tail.anchor_frame == FULL_RATE * 20
+
+
+@pytest.mark.parametrize("head_slope", [-6.336681489819062e-17, 6e-17, -1e-4])
+def test_a_stretch_the_measurement_calls_flat_is_copied_not_resampled(
+    head_slope: float,
+) -> None:
+    """A flat stretch's fitted slope is rounding noise, and the plan ignores it.
+
+    The first value is what a constant lag fitted to on one LAPACK build: one
+    plus it is the float just below 1.0, which would have sent a stretch with
+    no drift through the resampler. The last is a real slope too small to
+    matter: 2 ms over the stretch, under the 5 ms the model resamples for.
+    """
+    found = model()
+    head = replace(found.segments[0], slope=head_slope)
+    assert not head.drifts
+    found = replace(found, segments=(head, found.segments[1]))
+    plan = plan_from_measurements(found, total_frames=FULL_RATE * 120, quiet_search=False)
+    first, second = plan.segments
+    assert first.rate_ratio == 1.0
+    assert not first.drifts
+    assert second.rate_ratio == pytest.approx(1.0 - 5e-4)
 
 
 def test_each_segment_carries_the_offset_at_its_own_start() -> None:

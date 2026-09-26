@@ -431,6 +431,8 @@ def plan_from_measurements(
     One segment per straight stretch and one seam per jump. Each segment
     carries the offset at its own start and the rate the source has to be read
     at, so a stretch that drifts is corrected by the same pass that copies it.
+    A stretch the measurement does not call drifting is read at exactly 1.0:
+    the slope fitted to a constant lag is rounding noise, not a rate.
 
     With ``quiet_search`` and the source's analysis signal, each join is moved
     to the quietest span inside a tight bracket around its jump. Without them
@@ -466,7 +468,11 @@ def plan_from_measurements(
                 label=f"segment {index + 1}",
                 source=source,
                 offset_samples=round(model.lag_at(start) * sample_rate),
-                rate_ratio=model.rate_ratio,
+                # Not the raw 1 + slope: on a flat stretch the fit returns a
+                # slope of about 1e-17, and whether 1 + that rounds to 1.0 or
+                # to the float below it depends on the LAPACK build. Below it,
+                # the stretch would be resampled instead of copied.
+                rate_ratio=model.rate_ratio if model.drifts else 1.0,
                 anchor_frame=anchor,
             )
         )
