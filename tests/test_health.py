@@ -600,7 +600,7 @@ def test_from_state_reads_nothing_new_and_confirms_what_the_sweep_found(
         "--json", str(report),
     ]) == 1
     err = capsys.readouterr().err
-    assert "1 file(s) the state file has no answer for" in err
+    assert "0 suspect(s) of older rules looked at again; 1 file(s) the state file" in err
     assert "stage 2: confirming 1 of 2 suspect(s)" in err
     document = json.loads(report.read_text(encoding="utf-8"))
     assert document["counts"] == {OK: 1, SUSPECT: 1, CORRUPT: 1, UNREADABLE: 0}
@@ -641,3 +641,27 @@ def test_suspects_of_older_rules_are_read_again_and_nothing_else(tmp_path: Path)
     again, known, *_ = plan([tmp_path], state=state, settings=SMALL, device_of=device_of)
     assert [t.path for t in again] == [files[0]]
     assert len(known) == 3
+
+
+@pytest.mark.needs_ffmpeg
+def test_from_state_looks_again_at_suspects_of_older_rules(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "course"
+    root.mkdir()
+    source = root / "app.ts"
+    source.write_text("export const answer = 42;\n" * 20, encoding="utf-8")
+    stat = source.stat()
+    state = StateFile(tmp_path / "state.jsonl")
+    settings = Settings(blocks=8, block_size=16 << 10)
+    state.append(FileResult(str(source), stat.st_size, stat.st_mtime_ns, "lane-a", SUSPECT,
+                            evidence=("the demuxer could not read the header",),
+                            settings=settings.fingerprint(), rules=1))
+    state.close()
+    assert mkvkit_cli.main([
+        "health", str(root), "--gate", "off", "--state", str(state.path), "--blocks", "8",
+        "--block-kib", "16", "--from-state",
+    ]) == 0
+    captured = capsys.readouterr()
+    assert "1 suspect(s) of older rules looked at again" in captured.err
+    assert "1 not media" in captured.out

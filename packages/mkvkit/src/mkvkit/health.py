@@ -1288,9 +1288,18 @@ def _health(args: argparse.Namespace, config: Config) -> int:
         subset=args.subset,
     )
     if args.from_state:
-        print(f"stage 1: reading nothing; {len(targets)} file(s) the state file has no "
-              "answer for are left for another run", file=sys.stderr)
-        targets = []
+        # A suspect an older version of the rules answered for is looked at
+        # again, cheaply: its answer is known, only the rules moved on.
+        again = [
+            t for t in targets
+            if (old := known.get(StateFile.key(t.path))) is not None
+            and old.verdict == SUSPECT and old.stage == 1 and old.rules < RULES
+            and old.size == t.size and old.mtime_ns == t.mtime_ns
+        ]
+        print(f"stage 1: {len(again)} suspect(s) of older rules looked at again; "
+              f"{len(targets) - len(again)} file(s) the state file has no answer for "
+              "are left for another run", file=sys.stderr)
+        targets = again
     counts: dict[Device, int] = {}
     for result in unchanged:
         counts[result.device] = counts.get(result.device, 0) + 1
