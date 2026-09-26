@@ -592,3 +592,28 @@ def test_a_swap_plan_is_read_and_reported_without_moving_anything(
     assert run(configured, "swap", str(plan), "--parked", str(tmp_path / "parked")) == 1
     assert "the plan's path is not the item's" in capsys.readouterr().out
     assert live.read_bytes() == b"old"
+
+
+def test_naming_does_not_walk_into_a_link_and_honours_excludes(
+    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    import sys
+
+    from tests.test_walk import _junction
+
+    elsewhere = tmp_path / "another-disk"
+    elsewhere.mkdir()
+    (elsewhere / "Harbour.Lights.S01E02.mkv").write_bytes(b"x")
+    library = tmp_path / "library"
+    (library / "Skip").mkdir(parents=True)
+    (library / "Northwind.S01E03E04.mkv").write_bytes(b"x")
+    (library / "Skip" / "Harbour.Lights.S01E02.mkv").write_bytes(b"x")
+    if sys.platform == "win32":
+        _junction(elsewhere, library / "linked")
+    else:
+        (library / "linked").symlink_to(elsewhere, target_is_directory=True)
+    run(configured, "naming", str(library), "--exclude", "Skip")
+    out = capsys.readouterr().out
+    assert "Northwind.S01E03E04.mkv" in out
+    assert "Harbour.Lights.S01E02.mkv" not in out
+    assert "1 path(s)" in out

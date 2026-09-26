@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mkvkit.cli import SubCommand, add_common_arguments, run
+from mkvkit.walk import walk
 
 from . import __version__
 from .commands import LIST_HELP, REGISTRARS, expand_lists
@@ -78,6 +79,11 @@ def _register_naming(
              "digit-run expression out, as the server does",
     )
     naming.add_argument(
+        "--exclude", action="append", default=[], metavar="GLOB",
+        help="when walking a folder, leave out entries whose name or relative "
+             "path matches; links and junctions are never followed",
+    )
+    naming.add_argument(
         "--full-paths", action="store_true",
         help="print each path as given rather than its last segment, so batched "
              "output can be matched to its input",
@@ -90,16 +96,21 @@ def _longest_with_sidecars(path: str) -> int:
     return longest_derived_path(path)
 
 
-def _expand(values: Sequence[str]) -> list[str | Path]:
-    """Folders walked for video files; anything else kept exactly as given."""
+def _expand(values: Sequence[str], exclude: Sequence[str] = ()) -> list[str | Path]:
+    """Folders walked for video files; anything else kept exactly as given.
+
+    The walk enters no link or junction (:mod:`mkvkit.walk`) and leaves out
+    what ``exclude`` names; everything it left out is logged, so a folder
+    that was not looked at is never mistaken for one that had no problems.
+    """
     out: list[str | Path] = []
     for value in expand_lists(values):
         path = Path(value)
         if path.is_dir():
-            out += sorted(
-                p for p in path.rglob("*")
-                if p.is_file() and p.suffix.lower() in VIDEO_SUFFIXES
-            )
+            tree = walk(path, exclude=exclude, suffixes=VIDEO_SUFFIXES, sizes=False)
+            out += sorted(entry.path for entry in tree)
+            for skipped in tree.skipped:
+                log.warning("not walked: %s", skipped)
         else:
             out.append(value)
     return out
@@ -112,7 +123,7 @@ def _naming(args: argparse.Namespace, _config: Config) -> int:
     rename, where "it printed something" is not a signal and an exit code is.
     """
     absolute = getattr(args, "absolute_order", False)
-    results = [parse(path, absolute_order=absolute) for path in _expand(args.paths)]
+    results = [parse(path, absolute_order=absolute) for path in _expand(args.paths, args.exclude)]
     shown = 0
     too_long = 0
     for result in results:
