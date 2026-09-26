@@ -144,10 +144,30 @@ def test_a_survey_can_be_written_in_every_format(
 
 
 def test_asking_which_device_backs_a_path_reads_nothing_else(
-    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The machine's real process table is not this test's to depend on: any
+    # program reading the temporary directory's device -- another test of this
+    # run, working on media in parallel, included -- would hold the gate. The
+    # real listing is checked on its own in test_jobs.py.
+    monkeypatch.setattr("jfkit.jobs.list_processes", lambda: [])
     assert run(configured, "jobs", "gate", str(tmp_path), "--ignore-server") == 0
     assert "clear" in capsys.readouterr().out
+
+
+def test_the_gate_verb_is_held_by_a_reader_on_that_device(
+    configured: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from jfkit.devices import device_of
+    from jfkit.jobs import Process
+
+    reader = Process(pid=7, name="ffmpeg", command=f"ffmpeg -i {tmp_path / 'a.mkv'}")
+    monkeypatch.setattr("jfkit.jobs.list_processes", lambda: [reader])
+    assert run(configured, "jobs", "gate", str(tmp_path), "--ignore-server") == 1
+    out = capsys.readouterr().out
+    assert f"{device_of(tmp_path)}: held" in out
 
 
 def test_lanes_are_printed_largest_first(

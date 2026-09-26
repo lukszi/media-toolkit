@@ -12,6 +12,7 @@ another.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from jfkit.jobs import (
     detached_commands,
     gate,
     launch_detached,
+    list_processes,
     pack_lanes,
 )
 
@@ -133,6 +135,17 @@ def test_a_quiet_device_is_clear() -> None:
     clear = gate(DEVICE, processes=[], running_tasks=[])
     assert clear.open
     assert str(clear).endswith("clear")
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and os.name != "nt",
+    reason="the process table is read on two platforms only",
+)
+def test_the_real_process_listing_sees_this_process() -> None:
+    """The one test that reads the machine's process table rather than a stand-in."""
+    listed = {p.pid: p for p in list_processes()}
+    assert os.getpid() in listed
+    assert "python" in listed[os.getpid()].name.lower()
 
 
 def test_more_readers_can_be_allowed_where_the_storage_takes_them() -> None:
