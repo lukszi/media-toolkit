@@ -1,11 +1,14 @@
-"""jfkit.verbs -- the read verbs.
+"""jfkit.verbs -- the read verbs, and watched state carried across a rename.
 
 ``find``, ``children`` and ``playstate`` only read. They print rows as
 tab-separated text (the default, with a header line) or as JSON, so they pipe
 into whatever reads them next -- a mapping for a replay, a list for
-``refresh``.
+``refresh``. ``userdata`` snapshots every user's watched state, replays it
+onto new identifiers through a mapping and verifies it; its replay is a plan
+(printed by the dry run, saved with ``--plan-out``) applied with an audit and
+resumable after a partial failure.
 
-``playstate`` takes ``--jobs N``: how many requests
+``playstate`` and every ``userdata`` verb take ``--jobs N``: how many requests
 run at once, default :data:`mkvkit.lanes.DEFAULT_WORKERS`.
 """
 
@@ -15,12 +18,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 from typing import Any
 
 from mkvkit.lanes import DEFAULT_WORKERS
+from mkvkit.steps import add_plan_arguments, apply, load_plan
 
 from . import query
-from .commands import LIST_HELP, client_from, expand_lists
+from . import userdata as userdata_module
+from .commands import LIST_HELP, add_write_arguments, client_from, expand_lists
 from .config import Config
 
 __all__ = ["REGISTRARS"]
@@ -138,8 +144,123 @@ def _playstate(args: argparse.Namespace, config: Config) -> int:
     return 0 if report.ok else 1
 
 
+# -------------------------------------------------------------- userdata
+def _register_userdata(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    parser = subparsers.add_parser(
+        "userdata", help="snapshot every user's watched state, replay it after a rename",
+    )
+    verbs = parser.add_subparsers(dest="verb", metavar="VERB")
+
+    snap = verbs.add_parser("snapshot", help="write every user's state for items to a file")
+    snap.add_argument("item_ids", nargs="*", metavar="ID", help="item ids" + LIST_HELP)
+    snap.add_argument("--parent", action="append", default=[], metavar="ID",
+                      help="every video below this item (a series, a season)")
+    snap.add_argument("--out", type=Path, required=True, metavar="PATH")
+    snap.add_argument("--user", action="append", default=[], dest="users", metavar="ID")
+    _add_jobs(snap)
+    snap.set_defaults(handler=_userdata_snapshot)
+
+    def scoped(verb: argparse.ArgumentParser) -> None:
+        verb.add_argument("snapshot", type=Path)
+        verb.add_argument("--map", type=Path, dest="mapping", metavar="PATH",
+                          help="old id -> new id, as a JSON object or two TSV columns; "
+                               "an id not in it kept its identity")
+        verb.add_argument(
+            "--scope-parent", action="append", default=[], metavar="ID",
+            help="also check every video below this item (the whole series), and "
+                 "clear state the snapshot does not account for",
+        )
+        verb.add_argument("--scope", action="append", default=[], metavar="ID",
+                          help="also check this item" + LIST_HELP)
+        _add_jobs(verb)
+
+    replay = verbs.add_parser(
+        "replay", help="write the snapshot onto the new ids, clear inherited state",
+        epilog="exit status: 0 when nothing is left to do or everything was applied "
+               "and verified, 1 when a step failed or a row still differs, 2 for a "
+               "usage error.",
+    )
+    scoped(replay)
+    add_plan_arguments(replay)
+    add_write_arguments(replay)
+    replay.set_defaults(handler=_userdata_replay)
+
+    check = verbs.add_parser(
+        "verify", help="compare the server with what the snapshot justifies",
+        epilog="exit status: 0 when every row matches (a kept last-played date is "
+               "reported, not failed), 1 otherwise.",
+    )
+    scoped(check)
+    check.set_defaults(handler=_userdata_verify)
+
+
+def _userdata_snapshot(args: argparse.Namespace, config: Config) -> int:
+    client = client_from(args, config)
+    ids = expand_lists(args.item_ids)
+    for parent in args.parent:
+        ids += [str(r["Id"]) for r in query.children(
+            client, parent, recursive=True, types=VIDEO_TYPES)]
+    if not ids:
+        print("nothing to snapshot: name item ids or --parent")
+        return 2
+    taken = userdata_module.snapshot(client, ids, user_ids=args.users or None,
+                                     workers=args.jobs)
+    path = taken.save(args.out)
+    rows = sum(1 for item in taken.items for s in item.states.values() if not s.blank)
+    print(f"{len(taken.items)} item(s), {len(taken.users)} user(s), {rows} row(s) with "
+          f"state: written to {path}")
+    return 0
+
+
+def _scope(args: argparse.Namespace, client: Any) -> list[str]:
+    out = expand_lists(args.scope)
+    for parent in args.scope_parent:
+        out += [str(r["Id"]) for r in query.children(
+            client, parent, recursive=True, types=VIDEO_TYPES)]
+    return out
+
+
+def _userdata_replay(args: argparse.Namespace, config: Config) -> int:
+    client = client_from(args, config)
+    taken = userdata_module.Snapshot.load(args.snapshot)
+    mapping = userdata_module.load_mapping(args.mapping) if args.mapping else {}
+    scope = _scope(args, client)
+    if args.plan_in is not None:
+        plan = load_plan(args.plan_in)
+    else:
+        plan = userdata_module.plan_replay(client, taken, mapping, scope=scope,
+                                           workers=args.jobs)
+    print(plan.render())
+    if args.plan_out is not None:
+        print(f"plan written to {plan.save(args.plan_out)}")
+    if not client.dry_run and args.audit is None:
+        print("--apply records every write: name --audit PATH. Nothing was sent.")
+        return 2
+    if client.dry_run:
+        print("nothing was sent: this was a dry run")
+        return 0
+    report = apply(plan, userdata_module.actions(client), audit=args.audit)
+    print(report)
+    if not report.ok:
+        return 1
+    checked = userdata_module.verify(client, taken, mapping, scope=scope, workers=args.jobs)
+    print(checked)
+    return 0 if checked.ok else 1
+
+
+def _userdata_verify(args: argparse.Namespace, config: Config) -> int:
+    client = client_from(args, config)
+    taken = userdata_module.Snapshot.load(args.snapshot)
+    mapping = userdata_module.load_mapping(args.mapping) if args.mapping else {}
+    checked = userdata_module.verify(client, taken, mapping, scope=_scope(args, client),
+                                     workers=args.jobs)
+    print(checked)
+    return 0 if checked.ok else 1
+
+
 REGISTRARS = {
     "find": _register_find,
     "children": _register_children,
     "playstate": _register_playstate,
+    "userdata": _register_userdata,
 }
