@@ -6,7 +6,7 @@ repository.
 | Package | Directory | What it does |
 |---|---|---|
 | `mkvkit` | `packages/mkvkit` | the file side: safe header edits, original-vs-rebuilt verification, chapters, Matroska tags, container probing, spoken-language identification |
-| `jfkit` | `packages/jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, segment scoping, detached jobs |
+| `jfkit` | `packages/jfkit` | the server side: API client, whole-record round-trip, non-replacing refresh, filename-parse prediction, library options, database and preview upkeep, surveys, in-place swapping, evidence-first deletion, leftover sweeps and missing-content reports, segment scoping, detached jobs |
 | `dubalign` | `packages/dubalign` | aligning a foreign-language dub to a different transfer of the same title: decode, measure, find the seams, splice, verify |
 
 `mkvkit` and `dubalign` are useful with no media server at all. `jfkit` talks
@@ -171,7 +171,10 @@ its identity, its play state and its name survive, with the service stopped
 per chunk and the chunks sized in bytes. `jfkit delete` refuses to touch
 anything whose category nobody released, checks every precondition against the
 world rather than against the manifest, proves that a kept copy plays before
-it gives up another, and parks rather than deletes.
+it gives up another, and parks rather than deletes. `jfkit leftovers sweep`
+proposes the release junk, dead release folders, samples and unplayable files
+a library collects, for the same checks and a resumable plan that parks, and
+`jfkit leftovers missing` reports what the library lacks.
 `jfkit libopts`, `jfkit maintenance`, `jfkit segments` and `jfkit jobs` cover
 library options, the catalogue database, scoping a segment pass, and not
 putting two heavy readers on one disk.

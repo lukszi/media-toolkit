@@ -41,6 +41,24 @@ day the work was done.
 - **`userdata.merge` and `userdata.carries`.** One user's state across
   several copies of one film as one row, and whether one row holds another.
 
+- **`leftovers sweep` and `leftovers missing`.** A walk of every media
+  library (never through a link or a junction, one device after the
+  other, each behind the device gate) sorts every file into junk,
+  protected, video, sample and unsure by rules that are data, and proposes
+  release junk, dead release folders, samples and -- with `--corrupt` --
+  unplayable files. Proposals pass the `delete` preconditions and become a
+  `mkvkit.steps` plan that parks, checks every candidate again as it runs,
+  and resumes from its audit. `missing` reports rows with no file, files the
+  walk did not find, gaps in a season's numbering, and release folders whose
+  release is not catalogued.
+- **Four leftover categories for `delete`.** `release-junk`,
+  `dead-release-folder`, `corrupt-unplayable` and `sample` take no item
+  identifier: a candidate passes when nothing catalogued lives at or below
+  it, it holds no link or junction, and what the category needs is true.
+  `corrupt-unplayable` needs failed integrity evidence and no other
+  catalogued copy, and its evidence goes into the audit. `delete --rules
+  FILE` widens the junk rules and `--integrity full|quick` says how an
+  unplayable candidate is measured.
 - **`find`, `children` and `playstate`.** Items by name, path, provider id
   or type; an item's children, descendants or extras; and every user's
   watched state for items, read as each user. All user-scoped, printed as
@@ -85,6 +103,16 @@ day the work was done.
   parts of one episode (`S01E01a`, `S01E01b`, `part1`) share its identifiers
   and were grouped as copies. The segment is part of the group key now, and
   identifiers shared by distinct segments are counted separately.
+- **`delete` parks a video's sidecars with it.** The description file,
+  pictures and preview tiles that belong to a parked video by the server's
+  rules follow it into the parking directory, instead of staying behind for
+  a second, hand-made pass; subtitles and external audio follow only when no
+  copy is kept. A folder left with no video is said so.
+- **`delete` can release a folder that is no item's path.** A
+  `media-free-folder` candidate with no identifier is checked against the
+  whole catalogue -- nothing catalogued at or below it -- instead of being
+  refused because its own path is not an item's path, which a release
+  subfolder's never is.
 - **`delete` does not call a folder media-free when it holds a link.** A
   junction or symbolic link below a released folder was walked into -- onto
   whatever disk it pointed at -- or ignored. The check now walks without

@@ -25,6 +25,39 @@ A candidate declares a category. A category is a *reason*, not a list:
 | `media-free-folder` | the folder holds no media file, and no loose audio or subtitle track |
 | `rebuild-donor` | this is the file a kept rebuild was made from |
 | `superseded-copy` | a kept item, named in the manifest, covers this one |
+| `release-junk` | a tracker note, shortcut, program, padding file, checksum list or screenshot the rules name, or a folder of nothing else |
+| `dead-release-folder` | a release folder with no video left, only description files, artwork, preview tiles and junk |
+| `corrupt-unplayable` | a video whose payload check failed, with evidence, and no other catalogued copy |
+| `sample` | a release sample the rules name |
+
+The last four are **leftovers**: they have no catalogue row of their own, and
+take an empty `item_id`. The checks that key on an item -- in the catalogue,
+at the manifest's path, nobody's position in it -- are replaced by the
+question they stood in for: **nothing catalogued lives at the candidate's
+path or anywhere below it**, against the whole catalogue, read once per run.
+A release subfolder -- a screenshot folder beside a film somebody watched --
+never had a path equal to any item's path, and could not be expressed
+before. `media-free-folder` takes the same route when it is given no
+identifier. A leftover must also not be, or hold, a link or a junction; a
+dead release folder must hold nothing but description files, artwork,
+preview tiles and junk, and must not sit in a folder whose own video is
+still there (in a library folder itself, every video is an item of its own,
+so that does not count). A corrupt-unplayable candidate needs integrity
+evidence that it does not play -- no evidence is a refusal, not a pass --
+and no other catalogued copy of the same film or episode; somebody's
+position in it is reported, not refused, since it cannot be played; a file
+that changed since it was measured is refused (`jfkit delete --integrity
+full|quick` says how it is measured, `--rules FILE` widens the junk rules).
+`jfkit leftovers sweep` proposes all four from a walk of the library
+(`docs/jfkit.md`).
+
+A parked video takes its sidecars with it -- by the server's own rules
+(`mkvkit.sidecars`): its description file, its pictures, its preview tiles.
+Its subtitles and external audio follow only when no copy is kept
+(`corrupt-unplayable`); for a twin, a superseded copy or a donor they stay
+where they are and are said, because they may be the only copy of a track
+the kept file lacks. A folder left with no video of its own is said too: it
+is now a leftover, and the next sweep proposes it.
 
 The allowlist is passed in (`--release byte-identical-twin`), and a candidate
 whose category is not on it is refused **with its category named**, rather

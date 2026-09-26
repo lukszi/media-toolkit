@@ -77,6 +77,7 @@ jfkit libopts     show|roots|set           a library's options, defaults filled 
 jfkit maintenance snapshot|check|run|previews   the database, and the preview tiles
 jfkit swap        PLAN                     put rebuilt files in their items' places
 jfkit delete      MANIFEST                 park what a named category released
+jfkit leftovers   sweep|missing            release junk and dead folders; what is missing
 jfkit segments    tasks|scope|cancel       scope a segment pass to what is not covered
 jfkit jobs        gate|lanes               which device backs a path, and is it busy
 jfkit find        --name|--path|--provider find items, as the configured user sees them
@@ -85,8 +86,8 @@ jfkit playstate   ID...                    every user's watched state for items
 jfkit userdata    snapshot|replay|verify   carry watched state across a rename
 ```
 
-`naming`, `survey`, `find`, `children` and `playstate` read and change
-nothing, and so does `item` except for `item set`, which writes. `naming`, `survey`, `item show` and
+`naming`, `survey`, `find`, `children`, `playstate` and `leftovers missing`
+read and change nothing, and so does `item` except for `item set`, which writes. `naming`, `survey`, `item show` and
 `item diff` are the ones worth running first, and `jfkit survey` is the
 cheapest useful thing in the package.
 
@@ -331,7 +332,72 @@ another is kept, the kept copy's payload is read and decoded first
 (`--keeper-check full|quick`), and a kept copy that fails or cannot be checked
 refuses the candidate; nothing is deleted, things are moved; the row goes after
 the file has arrived; and every step is logged, including the ones that did
-nothing.
+nothing. A parked video takes its description file, pictures and preview
+tiles with it (`mkvkit.sidecars`); its subtitles and external audio stay
+unless no copy is kept (`corrupt-unplayable`), since they may be the only
+copy of a track.
+
+## `jfkit.leftovers` -- what is left over, and what is missing
+
+```
+jfkit leftovers sweep --plan-out leftovers.json --out report/
+jfkit leftovers sweep --release release-junk --release dead-release-folder \
+    --plan leftovers.json --audit leftovers.audit.jsonl --apply
+jfkit leftovers sweep --corrupt "/srv/media/series/Harbour Lights/Season 02/Harbour Lights - S02E05.mkv" \
+    --release corrupt-unplayable
+jfkit leftovers missing --format tsv --out report/
+```
+
+`sweep` walks every folder of every media library the server lists (or the
+folders named; collections and playlists, which live in the server's own
+data folder, are left out), one device after the other, asking the device
+gate before each device. The walk never enters a link or a junction, takes
+`--exclude GLOB` and `--exclude-path PATH`, and reports everything it did not
+enter. Every file lands in one class (`jfkit.safedelete.junk`):
+
+| class | what | ever moved |
+|---|---|---|
+| junk | tracker notes by name, shortcuts, programs, torrent padding, release screenshots, checksum lists | as `release-junk`, when released |
+| protected | description files, artwork the server reads, preview tiles, subtitles, audio, theme media, chapter documents, documents, archives, disc structures, the `.ignore` marker | never |
+| video / sample | what the server reads as an item; a release sample by name or folder | a sample as `sample`, only when that is released |
+| unsure | anything no rule names -- a text file no tracker pattern matches, a picture that is neither artwork nor a screenshot | never; reported |
+
+A folder with no video below it, nothing catalogued at or below it and
+nothing unseen below it is judged by its contents: nothing but junk makes it
+`release-junk` whole; description files, artwork and preview tiles make it a
+`dead-release-folder`, with the evidence of whether its release is
+catalogued elsewhere (by the identifiers its description files name, by
+series and episode, or by title and year) or not at all; anything else makes
+it a folder that is kept and reported. `--corrupt PATH` measures a video
+with `mkvkit integrity` (one reader per device) and proposes it as
+`corrupt-unplayable`.
+
+The rules are data. A TOML file named with `--rules` whose `[leftovers]`
+table sets a key replaces that list, and `extra_<key>` adds to it:
+`tracker_notes`, `shortcut_suffixes`, `program_suffixes`,
+`checksum_suffixes`, `padding_files`, `padding_folders`,
+`screenshot_folders`, `screenshot_files`, `sample_files`, `sample_folders`.
+No rule can make a protected kind junk: protection is decided first.
+
+Every proposal goes through `jfkit.safedelete.preconditions`, the checks
+`jfkit delete` makes; what passes and was released becomes one
+`leftovers.park` step of a `mkvkit.steps` plan. Nothing moves without
+`--release`, and the dry run shows what each category would move. `--apply`
+needs `--audit` and a parking directory (`--parked`, or `paths.parked`)
+outside every library. **Each step checks its candidate again when it
+runs**, and fails without moving anything when the world changed. A park is
+a rename on one volume and a verified copy across volumes; the parking
+directory keeps the layout, drive letter included. The same `--plan` and
+`--audit` resume a run that stopped. Exit status: 0, 1 when a step failed,
+2 for a usage error, 3 when a device gate held part of the library.
+
+`missing` reports four kinds of absence, as a table, TSV or JSON: rows with
+no path (`no-file`, virtual rows included when the server lists them), rows
+whose file the walk did not find under a walked folder (`file-gone`; never
+for a path the walk did not enter), gaps in a season's numbering
+(`season-gap`, from the rows, not from the server's display setting), and
+release folders with description files or artwork whose release no row
+matches (`release-without-item`).
 
 ## `jfkit.dedupe` -- copies of one film, resolved as one plan
 
