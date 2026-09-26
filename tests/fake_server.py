@@ -41,7 +41,7 @@ import json
 import shutil
 import tempfile
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -189,6 +189,9 @@ class Recorder:
     folders_deleted: list[str] = field(default_factory=list)
     #: rows a deleted-path notification dropped because their file was gone
     removed_by_scan: list[str] = field(default_factory=list)
+    #: called with every batch of path notifications, after they are recorded:
+    #: a test's stand-in for the scan the real server runs on the named folders
+    on_notify: Callable[[list[dict[str, Any]]], None] | None = None
     #: an item delete only removes folders below this, so a fixture path can
     #: never reach anything outside the test's own temporary tree
     disk_root: Path = field(
@@ -335,6 +338,8 @@ class _Handler(BaseHTTPRequestHandler):
             for update in updates:
                 if update.get("UpdateType") == "Deleted":
                     self._scan_deleted(str(update.get("Path") or ""))
+            if self.recorder.on_notify is not None:
+                self.recorder.on_notify(updates)
             self._send(204)
             return
         if route.startswith("/Items/RemoteSearch/Apply/"):
