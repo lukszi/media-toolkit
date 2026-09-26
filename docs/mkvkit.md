@@ -159,7 +159,11 @@ A file that passes all four is **OK**, one that fails any is **SUSPECT** with
 the evidence, and one that cannot be opened is **UNREADABLE**. A file with a
 suffix both video and source code use -- `.ts` above all -- that has no
 transport-stream sync pattern and reads as text is reported as "not a media
-file" and not judged.
+file" and not judged. A piece of a copied disc (a file under `BDMV`,
+`VIDEO_TS` and the like) is judged by its payload only, because its headers
+describe the whole title, and a clip shorter than two minutes is not held to
+the bitrate floor. When the rules change, a later run reads again only the
+files an older version called suspect.
 
 **Stage 2, the suspects only, read whole.** `integrity.check()` -- every packet
 listed, every frame decoded -- makes a suspect **CORRUPT**, or clears it to

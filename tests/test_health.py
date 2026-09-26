@@ -665,3 +665,22 @@ def test_from_state_looks_again_at_suspects_of_older_rules(
     captured = capsys.readouterr()
     assert "1 suspect(s) of older rules looked at again" in captured.err
     assert "1 not media" in captured.out
+
+
+def test_a_short_clip_is_not_held_to_a_bitrate_floor() -> None:
+    found, _ = probe_findings(probed(
+        30.0, {"index": 0, "codec_type": "video", "height": 1080},
+    ), 200 << 10, Settings())
+    assert found == []
+
+
+def test_a_piece_of_a_copied_disc_is_judged_by_its_payload_only(tmp_path: Path) -> None:
+    from mkvkit.health import in_disc_structure
+
+    menu = tmp_path / "Golden Meridian (1987)" / "VIDEO_TS" / "VTS_01_0.VOB"
+    assert in_disc_structure(menu)
+    assert not in_disc_structure(tmp_path / "Golden Meridian (1987)" / "Golden Meridian.mkv")
+    found, _ = probe_findings(probed(
+        93000.0, {"index": 0, "codec_type": "video", "height": 576, "duration": "1380"},
+    ), 2 << 20, Settings(), disc=True)
+    assert found == []

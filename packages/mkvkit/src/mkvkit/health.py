@@ -97,6 +97,7 @@ __all__ = [
     "Target",
     "confirm",
     "declared_end",
+    "in_disc_structure",
     "iter_suspects",
     "manifest_rows",
     "not_a_stream",
@@ -134,7 +135,17 @@ SCHEMA = 1
 #: The version of the stage-1 rules. A rule change that can only clear a file
 #: (never newly suspect one) bumps this, and a re-run reads again only the
 #: suspects an older version answered for -- not the whole library.
-RULES = 2
+RULES = 3
+
+#: Folders a disc is copied into. The files in them are pieces of a disc --
+#: menus, a few seconds of a logo, one cell of a title -- and their headers
+#: describe the title they belong to, not the piece. Only the payload checks
+#: (zero fill, extent) judge them.
+DISC_FOLDERS = frozenset({"bdmv", "video_ts", "hvdvd_ts", "stream"})
+
+#: A container shorter than this is a clip -- a sample, a trailer, a menu --
+#: and its average bitrate says nothing about whether it is whole.
+MIN_FLOOR_DURATION_S = 120.0
 
 #: Suffixes the server counts as video that are also used for other things --
 #: above all ``.ts``, which is a transport stream and a TypeScript source.
@@ -643,10 +654,19 @@ def _stream_bitrate(stream: Mapping[str, Any]) -> float | None:
     return stated if stated is not None else _number(_tag(stream, "BPS"))
 
 
+def in_disc_structure(path: Path | str) -> bool:
+    """Whether a file sits inside a copied disc's folder structure."""
+    return any(part.casefold() in DISC_FOLDERS for part in Path(path).parent.parts)
+
+
 def probe_findings(
-    probed: Mapping[str, Any], size: int, settings: Settings
+    probed: Mapping[str, Any], size: int, settings: Settings, *, disc: bool = False
 ) -> tuple[list[str], float | None]:
-    """What the probe's durations and bitrates say against the file's size."""
+    """What the probe's durations and bitrates say against the file's size.
+
+    ``disc`` marks a piece of a copied disc, whose headers describe the whole
+    title: only a missing track or duration is reported for it.
+    """
     findings: list[str] = []
     fmt = probed.get("format") or {}
     container = _number(fmt.get("duration")) if isinstance(fmt, Mapping) else None
@@ -656,6 +676,8 @@ def probe_findings(
         return findings, container
     if not container or container <= 0:
         findings.append("the container states no duration")
+        return findings, container
+    if disc:
         return findings, container
 
     tolerance = max(settings.duration_tolerance_s, settings.duration_tolerance * container)
@@ -693,7 +715,7 @@ def probe_findings(
     average = size * 8 / container
     heights = [int(_number(s.get("height")) or 0) for s in streams
                if s.get("codec_type") == "video"]
-    if heights:
+    if heights and container >= MIN_FLOOR_DURATION_S:
         tallest = max(heights)
         floor = next(rate for lines, rate in BITRATE_FLOORS if tallest >= lines)
         if average < floor:
@@ -779,7 +801,10 @@ def sweep_one(
         if complaints:
             notes.append(f"the demuxer said: {complaints[0]}"
                          + (f" (and {len(complaints) - 1} more)" if len(complaints) > 1 else ""))
-        found, duration = probe_findings(probed, size, settings)
+        disc = in_disc_structure(path)
+        found, duration = probe_findings(probed, size, settings, disc=disc)
+        if disc:
+            notes.append("a piece of a copied disc: judged by its payload only")
         evidence += found
     except CommandFailed as exc:
         first = (exc.result.stderr.strip() or exc.result.stdout.strip()).splitlines()
