@@ -180,6 +180,27 @@ def test_a_folder_with_no_media_in_it_is_recognisable(tmp_path: Path) -> None:
     assert not media_free(folder)
 
 
+
+def test_a_folder_holding_a_link_is_not_called_media_free(tmp_path: Path) -> None:
+    """A junction (a symbolic link where junctions do not exist) hides what is behind it."""
+    import sys
+
+    elsewhere = tmp_path / "another-disk"
+    elsewhere.mkdir()
+    (elsewhere / "film.mkv").write_bytes(b"x")
+    folder = tmp_path / "leftovers"
+    folder.mkdir()
+    (folder / "poster.jpg").write_bytes(b"x")
+    assert media_free(folder)
+    if sys.platform == "win32":
+        from tests.test_walk import _junction
+
+        _junction(elsewhere, folder / "linked")
+    else:
+        (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    assert not media_free(folder)
+
+
 # -------------------------------------------------------------- the manifest
 def test_a_manifest_reads_as_tab_separated_or_as_objects(tmp_path: Path) -> None:
     tsv = tmp_path / "manifest.tsv"

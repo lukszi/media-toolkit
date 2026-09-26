@@ -36,6 +36,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from mkvkit.walk import walk
+
 __all__ = [
     "LOOSE_TRACK_SUFFIXES",
     "MEDIA_SUFFIXES",
@@ -238,7 +240,11 @@ def folder_contents(
 def media_free(
     folder: Path | str, *, media_suffixes: Iterable[str] = MEDIA_SUFFIXES
 ) -> bool:
-    """True when nothing below this folder is a media file.
+    """True when nothing below this folder is a media file, and nothing is hidden.
+
+    A symbolic link, a junction or a folder that cannot be listed makes the
+    answer False: the walk does not follow them (:mod:`mkvkit.walk`), so it
+    cannot vouch for what is behind them.
 
     The one category of folder that can be removed without a per-file
     argument: a release folder left behind with nothing in it but artwork and
@@ -248,9 +254,13 @@ def media_free(
     here = Path(folder)
     if not here.is_dir():
         return False
-    return not any(
-        entry.is_file() and entry.suffix.lower() in kinds for entry in here.rglob("*")
-    )
+    tree = walk(here, sizes=False)
+    if any(entry.path.suffix.lower() in kinds for entry in tree):
+        return False
+    # A link, a junction or an unreadable folder below it is somewhere this
+    # check did not look, so nothing can be said about what is there -- and
+    # removing the folder would take the link with it.
+    return not tree.skipped
 
 
 def loose_tracks(folder: Path | str) -> list[Path]:
@@ -263,7 +273,6 @@ def loose_tracks(folder: Path | str) -> list[Path]:
     if not here.is_dir():
         return []
     return sorted(
-        entry for entry in here.rglob("*")
-        if entry.is_file() and entry.suffix.lower() in LOOSE_TRACK_SUFFIXES
+        entry.path for entry in walk(here, suffixes=LOOSE_TRACK_SUFFIXES, sizes=False)
     )
 
